@@ -1,0 +1,7 @@
+# ddaw — packs: dms_v1
+path: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/ddaw
+train: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/ddaw/images/train
+val: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/ddaw/images/val
+
+nc: 9
+names: ["face", "eye_open", "eye_partially_open", "eye_close", "mouth_open", "mouth_partially_open", "mouth_close", "side_face", "nod_face"]

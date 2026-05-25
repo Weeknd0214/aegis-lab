@@ -1,0 +1,5 @@
+# addw_face — packs: dms_v1
+path: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/addw_face
+train: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/addw_face/images/train
+val: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/addw_face/images/val
+kpt_shape: [37, 3]

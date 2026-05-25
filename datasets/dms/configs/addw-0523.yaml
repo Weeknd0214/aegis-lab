@@ -1,0 +1,7 @@
+# ADDW 分心检测
+path: /home/chengfanglu/DATA/DMS/DATASET/gyp/addw_0523
+train: images/train
+val: images/val
+
+nc: 4
+names: ["face", "eye_open", "nod_face", "nod_eye"]

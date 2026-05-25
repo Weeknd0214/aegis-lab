@@ -1,0 +1,101 @@
+# 任务定义 + 训练超参。数据包路径见 data_packs.yaml；训练用哪些包见 ML/workflow.registry.yaml active_packs
+
+version: 2
+dataset_root: .
+
+split:
+  val_ratio: 0.1
+  seed: 42
+  resplit_after_ingest: true
+  min_val_per_class: 1
+  min_train_per_class: 1
+  rare_class_train_floor: 5
+
+ingest:
+  sources_subdir: sources
+  ingested_subdir: sources/_ingested
+
+train:
+  mode: full
+
+  detect:
+    model: yolo26n.pt
+    epochs: 100
+    lr0: 0.01
+    imgsz: 640
+    warm_start: null
+    epochs_continue: 50
+    lr0_continue: 0.001
+
+  pose:
+    model: yolo26n-pose.pt
+    epochs: 100
+    lr0: 0.01
+    imgsz: 640
+    warm_start: null
+    epochs_continue: 50
+    lr0_continue: 0.001
+
+  classify:
+    model: yolo26n-cls.pt
+    epochs: 50
+    lr0: 0.01
+    imgsz: 224
+    warm_start: null
+    epochs_continue: 30
+    lr0_continue: 0.001
+
+tasks:
+  ddaw:
+    type: detect
+    task_dir: ddaw
+    nc: 9
+    names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face]
+    inbox: inbox/ddaw
+    extra_train: []
+
+  addw:
+    type: detect
+    task_dir: addw
+    nc: 4
+    names: [face, eye_open, nod_face, nod_eye]
+    inbox: inbox/addw
+    extra_train: []
+
+  addw_face:
+    type: pose
+    task_dir: addw_face
+    kpt_shape: [37, 3]
+    names: {0: face}
+    inbox: inbox/addw_face
+    extra_train: []
+
+  isa:
+    type: detect
+    task_dir: isa
+    nc: 4
+    names: [indicative, prohibitory, warning, vehicle]
+    inbox: inbox/isa
+    extra_train: []
+
+  dam:
+    type: detect
+    task_dir: dam
+    nc: 15
+    names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face, glasses, sunglasses, smoke, phone, driver, rise_face]
+    inbox: inbox/dam
+    extra_train: []
+
+  dam_0417:
+    type: detect
+    task_dir: dam_0417
+    nc: 15
+    names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face, glasses, sunglasses, smoke, phone, driver, rise_face]
+    inbox: inbox/dam_0417
+    extra_train: []
+
+  isa_class:
+    type: classify
+    task_dir: isa_class
+    inbox: inbox/isa_class
+    extra_train: []

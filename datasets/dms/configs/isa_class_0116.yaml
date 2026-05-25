@@ -1,0 +1,5 @@
+# ISA 交通标志分类 (Ultralytics classify)
+path: /home/chengfanglu/DATA/DMS/DATASET/gyp/isa_class_0116
+train: train
+val: val
+test: test

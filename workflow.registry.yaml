@@ -1,0 +1,50 @@
+# 路径均相对 HSAP/ 根。训练用哪些数据包由 active_packs 控制（add/build 不会自动改这里）
+
+version: 1
+workspace: .
+
+platform:
+  version: 1
+  data:
+    batch_meta_schema: as-batch-v1
+    drop_zones:
+      dms_inbox: "datasets/dms/inbox/{task}/{batch}"
+      dms_sources: "datasets/dms/packs/{pack}/{task}/sources/{batch}"
+      lane_inbox: "datasets/lane/inbox/{batch}"
+  training:
+    tracks:
+      local_allowed: true
+      platform_require_audit: true
+  agents:
+    trace_enabled: true
+    default_graph: ingest_flow
+
+automation:
+  on_new_sources: notify
+  require_eval_before_promote: true
+  min_delta_map50: -0.01
+  baseline_metrics:
+    dam: {map50: null, map50_95: null}
+    ddaw: {map50: null}
+
+projects:
+  dms:
+    root: datasets/dms
+    registry: datasets.registry.yaml
+    packs_registry: data_packs.yaml
+    base_pack: dms_v1
+    active_packs:
+      - dms_v1
+
+  lane:
+    root: datasets/lane
+    registry: datasets_registry.json
+    base_pack: lane_v1
+    active_packs:
+      - lane_v1
+    merge:
+      train: lists_merged/train_active.txt
+      val: lists_merged/val_active.txt
+    train:
+      workdir: algorithms/lane_ufld/code/UFLD
+      config: configs/mufld_lane_multi_pack.py

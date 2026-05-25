@@ -1,0 +1,62 @@
+
+【ddaw_1124】 train=3823 val=425  各类val%: min=9.8% max=10.3% 极差=0.4%
+  cls0: train=3074 val=346  val%=10.1%
+  cls1: train=674 val=77  val%=10.3%
+  cls2: train=1834 val=203  val%=10.0%
+  cls3: train=620 val=70  val%=10.1%
+  cls4: train=277 val=31  val%=10.1%
+  cls5: train=882 val=98  val%=10.0%
+  cls6: train=2423 val=265  val%=9.9%
+  cls7: train=651 val=72  val%=10.0%
+  cls8: train=138 val=15  val%=9.8%
+
+【addw_0523】 train=2671 val=298  各类val%: min=9.9% max=10.1% 极差=0.2%
+  cls0: train=1565 val=172  val%=9.9%
+  cls1: train=481 val=54  val%=10.1%
+  cls2: train=1121 val=126  val%=10.1%
+  cls3: train=2029 val=228  val%=10.1%
+
+【dam_0516】 train=5104 val=566  各类val%: min=8.8% max=11.1% 极差=2.2%
+  cls0: train=3525 val=394  val%=10.1%
+  cls1: train=986 val=113  val%=10.3%
+  cls2: train=2240 val=259  val%=10.4%
+  cls3: train=1074 val=105  val%=8.9%
+  cls4: train=362 val=40  val%=10.0%
+  cls5: train=1497 val=186  val%=11.1%
+  cls6: train=2826 val=290  val%=9.3%
+  cls7: train=896 val=98  val%=9.9%
+  cls8: train=595 val=67  val%=10.1%
+  cls9: train=1473 val=143  val%=8.8%
+  cls10: train=423 val=47  val%=10.0%
+  cls11: train=1180 val=122  val%=9.4%
+  cls12: train=1241 val=131  val%=9.5%
+  cls13: train=4988 val=555  val%=10.0%
+  cls14: train=459 val=52  val%=10.2%
+
+【dam_0417】 train=2210 val=245  各类val%: min=8.6% max=10.7% 极差=2.1%
+  cls0: train=1302 val=137  val%=9.5%
+  cls1: train=237 val=26  val%=9.9%
+  cls2: train=1117 val=125  val%=10.1%
+  cls3: train=607 val=68  val%=10.1%
+  cls4: train=220 val=24  val%=9.8%
+  cls5: train=749 val=77  val%=9.3%
+  cls6: train=1093 val=128  val%=10.5%
+  cls7: train=585 val=64  val%=9.9%
+  cls8: train=291 val=33  val%=10.2%
+  cls9: train=902 val=97  val%=9.7%
+  cls10: train=29 val=3  val%=9.4%
+  cls11: train=451 val=54  val%=10.7%
+  cls12: train=545 val=61  val%=10.1%
+  cls13: train=2172 val=243  val%=10.1%
+  cls14: train=297 val=28  val%=8.6%
+
+【yoloface-0726】 train=4970 val=627  各类val%: min=11.2% max=11.2% 极差=0.0%
+  cls0: train=4960 val=627  val%=11.2%
+
+【isa_detect】 train=54066 val=5990  各类val%: min=10.0% max=10.4% 极差=0.4%
+  cls0: train=16883 val=1951  val%=10.4%
+  cls1: train=36344 val=4063  val%=10.1%
+  cls2: train=7693 val=859  val%=10.0%
+  cls3: train=15435 val=1708  val%=10.0%
+
+【isa_class_0116】 classify 各类val%: min=8.3% max=11.8% 极差=3.4%

@@ -1,0 +1,7 @@
+# DDAW 疲劳检测（脸/眼/嘴状态）
+path: /home/chengfanglu/DATA/DMS/DATASET/gyp/ddaw_1124
+train: images/train
+val: images/val
+
+nc: 9
+names: ["face", "eye_open", "eye_partially_open", "eye_close", "mouth_open", "mouth_partially_open", "mouth_close", "side_face", "nod_face"]

@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg
+.venv/
+venv/
+
+# Node / frontend
+platform/web/node_modules/
+platform/web/dist/
+platform/web/tsconfig.tsbuildinfo
+
+# Secrets & local env
+.env
+manifests/feishu.env
+manifests/platform.db
+*.pem
+*.key
+
+# Runtime / logs
+manifests/catalog_cache.json
+manifests/trace_log.jsonl
+manifests/job_log.jsonl
+reports/
+**/runs/
+**/log/
+**/tmp/
+**/wandb/
+
+# Large artifacts (勿提交权重与原始数据)
+*.pt
+*.pth
+*.onnx
+*.rknn
+*.engine
+*.tar
+*.tar.gz
+*.zip
+
+# Dataset media (脚手架 yaml/脚本可提交，图像视频勿提交)
+datasets/**/packs/
+datasets/**/inbox/
+datasets/**/archive/
+datasets/**/sources/
+datasets/**/DATASET/
+datasets/**/*.jpg
+datasets/**/*.jpeg
+datasets/**/*.png
+datasets/**/*.bmp
+datasets/**/*.mp4
+datasets/**/*.avi
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Docker local
+.workspace-stub/
+
+# Optional: 若改用软链模式，取消注释以忽略内嵌副本
+# algorithms/dms_yolo/code/
+# algorithms/lane_ufld/code/

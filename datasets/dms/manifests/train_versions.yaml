@@ -1,0 +1,53 @@
+# 模型版本：current=线上/基线，candidate=待晋级（train → eval → promote）
+# data_yaml 由 active_packs 生成，路径固定为 manifests/yaml_active/
+
+schema: model-versions-v2
+
+ddaw:
+  type: detect
+  data_yaml: manifests/yaml_active/ddaw.yaml
+  current: null
+  candidate: null
+  last_eval: null
+
+addw:
+  type: detect
+  data_yaml: manifests/yaml_active/addw.yaml
+  current: null
+  candidate: null
+  last_eval: null
+
+addw_face:
+  type: pose
+  data_yaml: manifests/yaml_active/addw_face.yaml
+  current: null
+  candidate: null
+  last_eval: null
+
+isa:
+  type: detect
+  data_yaml: manifests/yaml_active/isa.yaml
+  current: null
+  candidate: null
+  last_eval: null
+
+dam:
+  type: detect
+  data_yaml: manifests/yaml_active/dam.yaml
+  current: null
+  candidate: null
+  last_eval: null
+
+dam_0417:
+  type: detect
+  data_yaml: manifests/yaml_active/dam_0417.yaml
+  current: null
+  candidate: null
+  last_eval: null
+
+isa_class:
+  type: classify
+  data_yaml: manifests/yaml_active/isa_class.yaml
+  current: null
+  candidate: null
+  last_eval: null

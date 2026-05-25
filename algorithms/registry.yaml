@@ -1,0 +1,12 @@
+# 算法框架注册表（仅代码，不含数据集）
+algorithms:
+  dms_yolo26:
+    projects: [dms]
+    workdir: algorithms/dms_yolo/code
+    conda_env: dms_yolo26
+    module: algorithms.dms_yolo.adapter
+  lane_ufld:
+    projects: [lane]
+    workdir: algorithms/lane_ufld/code/UFLD
+    conda_env: lane_light
+    module: algorithms.lane_ufld.adapter

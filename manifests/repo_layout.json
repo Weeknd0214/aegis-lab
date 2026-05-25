@@ -1,0 +1,6 @@
+{
+  "layout": "embedded",
+  "vendored_at": "2026-05-25T16:20:20+08:00",
+  "workspace_source": "/home/chengfanglu/DATA/workspace",
+  "note": "算法代码与数据集脚手架已内嵌；大文件数据请挂载 workspace 或 rsync 到 datasets/"
+}

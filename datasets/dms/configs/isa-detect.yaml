@@ -1,0 +1,7 @@
+# ISA 交通标志检测
+path: /home/chengfanglu/DATA/DMS/DATASET/gyp/isa_detect
+train: images/train
+val: images/val
+
+nc: 4
+names: ["indicative", "prohibitory", "warning", "vehicle"]

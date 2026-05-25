@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+
+# ── React 构建 ──
+FROM node:22-alpine AS web-build
+WORKDIR /web
+COPY platform/web/package.json platform/web/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install
+COPY platform/web/ ./
+RUN npm run build
+
+# ── Platform API ──
+FROM python:3.11-slim AS platform
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/data/hsap/platform
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 curl bash \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /data/hsap
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY platform/ ./platform/
+COPY scripts/ ./scripts/
+COPY as.py workflow.registry.yaml ./
+COPY algorithms/registry.yaml ./algorithms/
+COPY --from=web-build /web/dist ./platform/web/dist
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8787
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python", "-m", "as_platform.api.server", "--host", "0.0.0.0", "--port", "8787"]

@@ -1,0 +1,5 @@
+# isa_class — pack: dms_v1
+path: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/isa_class
+train: train
+val: val
+test: test

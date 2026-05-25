@@ -1,0 +1,9 @@
+# ADDW 人脸关键点 (pose)
+path: /home/chengfanglu/DATA/DMS/DATASET/gyp/yoloface-0726
+train: images/train
+val: images/val
+test:
+
+kpt_shape: [37, 3]
+names:
+  0: face

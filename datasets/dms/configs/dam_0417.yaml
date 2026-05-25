@@ -1,0 +1,7 @@
+# DAM 源数据 dam_src_0417 转换 (VOC -> YOLO)
+path: /home/chengfanglu/DATA/DMS/DATASET/gyp/dam_0417
+train: images/train
+val: images/val
+
+nc: 15
+names: ["face", "eye_open", "eye_partially_open", "eye_close", "mouth_open", "mouth_partially_open", "mouth_close", "side_face", "nod_face", "glasses", "sunglasses", "smoke", "phone", "driver", "rise_face"]

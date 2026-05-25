@@ -1,0 +1,13 @@
+.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+platform/web/dist
+**/runs
+**/log
+**/tmp
+manifests/platform.db
+*.md
+.env
+manifests/feishu.env
