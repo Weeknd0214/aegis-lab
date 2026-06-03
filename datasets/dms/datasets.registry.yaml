@@ -1,6 +1,7 @@
-# 任务定义 + 训练超参。数据包路径见 data_packs.yaml；训练用哪些包见 ML/workflow.registry.yaml active_packs
+# 任务定义 + 训练超参。数据包路径见 data_packs.yaml；训练用哪些包见 workflow.registry.yaml active_packs
+# domain: dms=舱内驾驶员监控 | forward=前向交通标志（检测+细分类合一任务）
 
-version: 2
+version: 3
 dataset_root: .
 
 split:
@@ -47,6 +48,8 @@ train:
 
 tasks:
   ddaw:
+    domain: dms
+    label: DDAW 疲劳检测
     type: detect
     task_dir: ddaw
     nc: 9
@@ -55,6 +58,8 @@ tasks:
     extra_train: []
 
   addw:
+    domain: dms
+    label: ADDW 分心检测
     type: detect
     task_dir: addw
     nc: 4
@@ -63,6 +68,8 @@ tasks:
     extra_train: []
 
   addw_face:
+    domain: dms
+    label: ADDW 人脸关键点
     type: pose
     task_dir: addw_face
     kpt_shape: [37, 3]
@@ -70,32 +77,56 @@ tasks:
     inbox: inbox/addw_face
     extra_train: []
 
-  isa:
-    type: detect
-    task_dir: isa
-    nc: 4
-    names: [indicative, prohibitory, warning, vehicle]
-    inbox: inbox/isa
-    extra_train: []
-
   dam:
-    type: detect
+    domain: dms
+    label: DAM 驾驶员监控
+    type: multi
     task_dir: dam
-    nc: 15
-    names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face, glasses, sunglasses, smoke, phone, driver, rise_face]
-    inbox: inbox/dam
-    extra_train: []
+    modes:
+      batch_0516:
+        label: 0516 批次
+        type: detect
+        subdir: batch_0516
+        nc: 15
+        names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face, glasses, sunglasses, smoke, phone, driver, rise_face]
+        inbox: inbox/dam/batch_0516
+        extra_train: []
+      batch_0417:
+        label: 0417 批次
+        type: detect
+        subdir: batch_0417
+        nc: 15
+        names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face, glasses, sunglasses, smoke, phone, driver, rise_face]
+        inbox: inbox/dam/batch_0417
+        extra_train: []
 
-  dam_0417:
+  forward:
+    domain: forward
+    label: 前向·交通标志
+    type: multi
+    task_dir: forward
+    modes:
+      detect:
+        label: 粗检测（4 类）
+        type: detect
+        subdir: detect
+        nc: 4
+        names: [indicative, prohibitory, warning, vehicle]
+        inbox: inbox/forward/detect
+        extra_train: []
+      classify:
+        label: 细分类
+        type: classify
+        subdir: classify
+        inbox: inbox/forward/classify
+        extra_train: []
+
+  adas:
+    domain: forward
+    label: 前向·ADAS 7 类检测
     type: detect
-    task_dir: dam_0417
-    nc: 15
-    names: [face, eye_open, eye_partially_open, eye_close, mouth_open, mouth_partially_open, mouth_close, side_face, nod_face, glasses, sunglasses, smoke, phone, driver, rise_face]
-    inbox: inbox/dam_0417
-    extra_train: []
-
-  isa_class:
-    type: classify
-    task_dir: isa_class
-    inbox: inbox/isa_class
-    extra_train: []
+    task_dir: adas
+    nc: 7
+    names: [Pedestrain, Car, Truck, Bus, Motor-vehicles, Tricycle, cones]
+    mode: detect
+    inbox: inbox/adas

@@ -1,7 +1,7 @@
-# 模型版本：current=线上/基线，candidate=待晋级（train → eval → promote）
-# data_yaml 由 active_packs 生成，路径固定为 manifests/yaml_active/
+# 模型版本：current=线上/基线，candidate=待晋级
+# multi 任务 forward 按 mode 分子项；训练 yaml 为 forward__detect / forward__classify
 
-schema: model-versions-v2
+schema: model-versions-v3
 
 ddaw:
   type: detect
@@ -24,30 +24,38 @@ addw_face:
   candidate: null
   last_eval: null
 
-isa:
+dam__batch_0516:
+  task: dam
+  mode: batch_0516
   type: detect
-  data_yaml: manifests/yaml_active/isa.yaml
+  data_yaml: manifests/yaml_active/dam__batch_0516.yaml
   current: null
   candidate: null
   last_eval: null
 
-dam:
+dam__batch_0417:
+  task: dam
+  mode: batch_0417
   type: detect
-  data_yaml: manifests/yaml_active/dam.yaml
+  data_yaml: manifests/yaml_active/dam__batch_0417.yaml
   current: null
   candidate: null
   last_eval: null
 
-dam_0417:
+forward__detect:
+  task: forward
+  mode: detect
   type: detect
-  data_yaml: manifests/yaml_active/dam_0417.yaml
+  data_yaml: manifests/yaml_active/forward__detect.yaml
   current: null
   candidate: null
   last_eval: null
 
-isa_class:
+forward__classify:
+  task: forward
+  mode: classify
   type: classify
-  data_yaml: manifests/yaml_active/isa_class.yaml
+  data_yaml: manifests/yaml_active/forward__classify.yaml
   current: null
   candidate: null
   last_eval: null

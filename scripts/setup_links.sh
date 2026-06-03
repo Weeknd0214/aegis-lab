@@ -29,8 +29,11 @@ link_dir() {
     rm -f "$link"
   fi
   mkdir -p "$(dirname "$link")"
-  ln -sfn "$target" "$link"
-  echo "  $link -> $target"
+  local rel link_parent
+  link_parent="$(dirname "$link")"
+  rel="$(python3 -c "import os.path; print(os.path.relpath('''$target''', '''$link_parent'''))")"
+  ln -sfn "$rel" "$link"
+  echo "  $link -> $rel"
 }
 
 mkdir -p "$WS/Lane" "$ROOT/datasets" "$ROOT/algorithms/dms_yolo" "$ROOT/algorithms/lane_ufld"
@@ -39,8 +42,22 @@ mkdir -p "$WS/Lane" "$ROOT/datasets" "$ROOT/algorithms/dms_yolo" "$ROOT/algorith
 [[ -d "$WS/lane" ]] && ln -sfn "$WS/lane" "$WS/Lane/dataset" 2>/dev/null || true
 [[ -d "$WS/LaneDection/Code" ]] && ln -sfn "$WS/LaneDection/Code" "$WS/Lane/code" 2>/dev/null || true
 
-echo ">>> datasets"
-link_dir "$WS/DMS/DATASET" "$ROOT/datasets/dms"
+echo ">>> datasets/dms（保留仓库内 registry/scripts，仅软链 packs）"
+DMS_ROOT="$ROOT/datasets/dms"
+if [[ -L "$DMS_ROOT" ]]; then
+  rm -f "$DMS_ROOT"
+fi
+if [[ ! -d "$DMS_ROOT" ]] && [[ -d "${DMS_ROOT}.embedded.bak" ]]; then
+  mv "${DMS_ROOT}.embedded.bak" "$DMS_ROOT"
+fi
+mkdir -p "$DMS_ROOT/packs"
+if [[ -d "$WS/DMS/DATASET/packs" ]]; then
+  for pack in "$WS/DMS/DATASET/packs"/*; do
+    [[ -e "$pack" ]] || continue
+    name="$(basename "$pack")"
+    link_dir "$pack" "$DMS_ROOT/packs/$name"
+  done
+fi
 link_dir "$WS/lane" "$ROOT/datasets/lane"
 
 echo ">>> algorithms"

@@ -1,0 +1,7 @@
+# forward__detect — packs: dms_v1
+path: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/forward/detect
+train: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/isa/images/train
+val: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/isa/images/val
+
+nc: 4
+names: ["indicative", "prohibitory", "warning", "vehicle"]

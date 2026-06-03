@@ -40,6 +40,15 @@ def main() -> None:
             sys.exit(1)
         return
 
+    if not redis_required:
+        if ping_redis():
+            print("Redis 已就绪")
+        else:
+            print("thread 模式：Redis 未运行，跳过等待（标注锁/Job 队列功能受限）")
+        if not ok_db:
+            sys.exit(1)
+        return
+
     for i in range(30):
         if ping_redis():
             print("Redis 已就绪")

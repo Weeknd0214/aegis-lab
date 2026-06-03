@@ -6,6 +6,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PYTHONPATH="${ROOT}/platform${PYTHONPATH:+:$PYTHONPATH}"
 
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
+fi
+
 if [[ -f "$ROOT/manifests/feishu.env" ]]; then
   set -a
   # shellcheck disable=SC1091
@@ -14,6 +21,11 @@ if [[ -f "$ROOT/manifests/feishu.env" ]]; then
 fi
 
 export AS_JOB_EXECUTOR="${AS_JOB_EXECUTOR:-thread}"
+
+# .env 中 AS_REDIS_PORT=6380 时与 feishu.env 默认 6379 对齐
+if [[ -n "${AS_REDIS_PORT:-}" ]]; then
+  export AS_REDIS_URL="redis://127.0.0.1:${AS_REDIS_PORT}/0"
+fi
 
 cd "$ROOT"
 bash scripts/setup_links.sh 2>/dev/null || true

@@ -16,6 +16,8 @@ FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/access_token"
 FEISHU_USER_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info"
 FEISHU_TENANT_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 FEISHU_CONTACT_USER_URL = "https://open.feishu.cn/open-apis/contact/v3/users/{user_id}"
+FEISHU_CONTACT_USERS_URL = "https://open.feishu.cn/open-apis/contact/v3/users"
+FEISHU_DEPARTMENTS_URL = "https://open.feishu.cn/open-apis/contact/v3/departments"
 
 STATE_ALG = "HS256"
 STATE_EXPIRE_MINUTES = 10
@@ -140,3 +142,102 @@ def _get_contact_user_profile(
     if data.get("code") != 0:
         raise RuntimeError(data.get("msg") or "飞书联系人信息获取失败")
     return data.get("data", {}).get("user", {})
+
+
+def fetch_feishu_users(page_size: int = 100) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """从飞书通讯录批量拉取用户列表并获取部门名称映射，返回 (users, dept_name_map)。
+    如果应用无通讯录权限则返回空列表。"""
+    if not is_feishu_configured():
+        return [], {}
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            token = _get_tenant_access_token(client)
+
+        # 先获取部门列表（如果应用有通讯录权限）
+        dept_map: dict[str, str] = {}
+        try:
+            page_token = ""
+            while True:
+                params: dict[str, str | int] = {"page_size": 100, "department_id_type": "open_department_id"}
+                if page_token:
+                    params["page_token"] = page_token
+                resp = client.get(FEISHU_DEPARTMENTS_URL, params=params, headers={"Authorization": f"Bearer {token}"})
+                if resp.status_code >= 400:
+                    break  # 无部门权限，跳过
+                d = resp.json()
+                if d.get("code") == 0:
+                    for item in d.get("data", {}).get("items", []):
+                        dept_map[item.get("open_department_id", "")] = item.get("name", "")
+                page_token = d.get("data", {}).get("page_token", "")
+                if not page_token:
+                    break
+        except Exception:
+            pass  # 无需部门信息也可同步用户
+
+            # 再获取用户列表（如无通讯录权限则跳过）
+            users: list[dict[str, Any]] = []
+            try:
+                page_token = ""
+                while True:
+                    params = {
+                        "user_id_type": "open_id",
+                        "department_id_type": "open_department_id",
+                        "page_size": min(page_size, 100),
+                    }
+                    if page_token:
+                        params["page_token"] = page_token  # type: ignore
+                    resp = client.get(FEISHU_CONTACT_USERS_URL, params=params, headers={"Authorization": f"Bearer {token}"})  # type: ignore
+                    if resp.status_code >= 400:
+                        break
+                    d = resp.json()
+                    if d.get("code") == 0:
+                        for item in d.get("data", {}).get("items", []):
+                            users.append({
+                                "open_id": item.get("open_id"),
+                                "union_id": item.get("union_id"),
+                                "user_id": item.get("user_id"),
+                                "name": item.get("name"),
+                                "email": item.get("email"),
+                                "mobile": item.get("mobile"),
+                                "avatar_url": item.get("avatar", {}).get("avatar_240") if isinstance(item.get("avatar"), dict) else None,
+                                "department_ids": item.get("department_ids", []),
+                            })
+                    page_token = d.get("data", {}).get("page_token", "")
+                    if not page_token:
+                        break
+            except Exception:
+                pass  # 无通讯录权限，跳过用户列表拉取
+
+            return users, dept_map
+    except Exception:
+        return [], {}
+
+
+def sync_feishu_users_to_db(db: Session) -> dict[str, int]:
+    """同步飞书用户到数据库，返回 {created, updated, total}。"""
+    users, dept_map = fetch_feishu_users()
+    created, updated = 0, 0
+    for info in users:
+        open_id = info.get("open_id")
+        if not open_id:
+            continue
+        user = db.query(User).filter(User.feishu_open_id == open_id).first()
+        if not user:
+            user = User(feishu_open_id=open_id)
+            db.add(user)
+            created += 1
+        else:
+            updated += 1
+        user.feishu_union_id = info.get("union_id") or user.feishu_union_id
+        user.feishu_user_id = info.get("user_id") or user.feishu_user_id
+        user.name = info.get("name") or user.name
+        user.email = info.get("email") or user.email or user.email
+        user.avatar_url = info.get("avatar_url") or user.avatar_url
+        dept_ids = info.get("department_ids")
+        if isinstance(dept_ids, list) and dept_ids:
+            dept_names = [dept_map.get(str(did), str(did)) for did in dept_ids]
+            user.feishu_department_ids_json = json.dumps(dept_names, ensure_ascii=False)
+        user.is_active = True
+    db.flush()
+    return {"created": created, "updated": updated, "total": len(users)}

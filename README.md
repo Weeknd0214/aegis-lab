@@ -60,6 +60,8 @@ make dev       # 额外启动 Vite 热更新 :5173
 
 **开发登录：** 默认 `manifests/feishu.env` 中 `AS_DEV_AUTH=true`，无需飞书即可登录。
 
+**改 HSAP 前端后（源码在 `platform/web/`）：** 须执行 `bash scripts/build_web.sh` 并 `docker compose restart platform`，否则 8787 仍为旧静态包。
+
 ---
 
 ## 本机直跑（不用 Docker 跑 Platform）

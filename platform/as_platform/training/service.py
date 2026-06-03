@@ -124,9 +124,10 @@ def list_training_records(
     kind: str | None = None,
     status: str | None = None,
     task: str | None = None,
-    limit: int = 100,
+    offset: int = 0,
+    limit: int = 20,
 ) -> dict[str, Any]:
-    jobs = list_jobs(status=status, limit=500)
+    jobs = list_jobs(status=status, offset=0, limit=2000)["items"]
     records: list[dict[str, Any]] = []
     for job in jobs:
         if job.get("action") not in TRAINING_ACTIONS:
@@ -139,9 +140,9 @@ def list_training_records(
         if task and rec.get("task") != task:
             continue
         records.append(rec)
-        if len(records) >= limit:
-            break
-    return {"items": records, "total": len(records), "summary": _summarize(records)}
+    total = len(records)
+    page = records[max(0, offset) : max(0, offset) + max(1, limit)]
+    return {"items": page, "total": total, "offset": offset, "limit": limit, "summary": _summarize(records)}
 
 
 def get_training_record(job_id: str) -> dict[str, Any] | None:

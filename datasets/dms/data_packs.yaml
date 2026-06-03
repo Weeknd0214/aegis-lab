@@ -1,16 +1,15 @@
-# DMS 数据包登记（训练用哪些包由 ML/workflow.registry.yaml 的 active_packs 决定）
-
 schema: dms-multi-pack-v1
-
 packs:
-  - name: dms_v1
-    path: packs/dms_v1
-    role: baseline
-    frozen: true
-
-  # 新建增量包示例（add/build 写入，需 enable 后才参与训练）:
-  # - name: dms_v2
-  #   path: packs/dms_v2
-
+- name: dms_v1
+  path: packs/dms_v1
+  role: baseline
+  frozen: true
+- name: dms_v2
+  path: packs/dms_v2
+  role: incremental
+- name: adas_v1
+  path: packs/adas_v1
+  role: adas_forward
+  note: 前向 ADAS 7 类检测数据集 (53GB)
 aliases:
   DMS_v1_AddBy_Luchengfang_20260520: dms_v1

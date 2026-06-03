@@ -58,6 +58,24 @@ def list_users(db: Session) -> list[User]:
     return db.query(User).options(joinedload(User.roles)).order_by(User.id).all()
 
 
+def list_users_paginated(
+    db: Session,
+    search: str = "",
+    role_code: str = "",
+    offset: int = 0,
+    limit: int = 20,
+) -> tuple[list[User], int]:
+    q = db.query(User).options(joinedload(User.roles))
+    if search:
+        like = f"%{search}%"
+        q = q.filter((User.name.ilike(like)) | (User.email.ilike(like)))
+    if role_code:
+        q = q.join(User.roles).filter(Role.code == role_code)
+    total = q.count()
+    users = q.order_by(User.id).offset(offset).limit(limit).all()
+    return users, total
+
+
 def set_user_roles(db: Session, user_id: int, role_codes: list[str]) -> User | None:
     user = get_user_by_id(db, user_id)
     if not user:

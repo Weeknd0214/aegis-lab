@@ -17,23 +17,31 @@ from as_platform.config import (
     MANIFESTS,
 )
 from as_platform.db.engine import Base, engine, session_scope
-from as_platform.db.models import Approval, Job, Permission, Role, User
+from as_platform.db.models import Approval, FleetVehicle, Job, OperationLog, Permission, Role, User
 
 # 角色 → 权限
 ROLE_DEFS: dict[str, tuple[str, list[str]]] = {
     "admin": ("管理员", ["*"]),
     "reviewer": ("审核员", [
-        "read:catalog", "read:pending", "read:jobs", "read:audit",
-        "write:approval_review",
+        "read:catalog", "read:pending", "read:jobs", "read:audit", "read:fleet", "read:deliveries",
+        "write:approval_review", "write:approval_submit",
     ]),
     "engineer": ("算法工程师", [
-        "read:catalog", "read:pending", "read:jobs", "read:audit",
-        "write:approval_submit",
+        "read:catalog", "read:pending", "read:jobs", "read:audit", "read:fleet", "write:fleet",
+        "write:approval_submit", "write:delivery_submit", "read:deliveries",
+        "write:labeling_vendor", "write:labeling_assign",
     ]),
     "labeler": ("标注协调", [
-        "read:catalog", "read:pending", "write:approval_submit:register",
+        "read:catalog", "read:pending", "read:fleet", "write:approval_submit:register",
+        "write:delivery_submit", "read:deliveries", "write:labeling_assign",
     ]),
-    "viewer": ("只读访客", ["read:catalog", "read:pending"]),
+    "internal_labeler": ("内部标注员", [
+        "read:catalog", "read:pending", "read:jobs",
+    ]),
+    "vendor_labeler": ("第三方标注", [
+        "read:catalog", "read:pending", "read:jobs", "write:labeling_vendor",
+    ]),
+    "viewer": ("只读访客", ["read:catalog", "read:pending", "read:fleet"]),
 }
 
 PERMISSION_NAMES: dict[str, str] = {
@@ -42,19 +50,37 @@ PERMISSION_NAMES: dict[str, str] = {
     "read:pending": "查看送标/批次",
     "read:jobs": "查看 Job 队列",
     "read:audit": "查看审核记录",
+    "read:fleet": "查看车队地图",
+    "write:fleet": "管理车队与轨迹",
     "write:approval_submit": "提交审核（训练/build 等）",
     "write:approval_submit:register": "提交批次登记审核",
     "write:approval_review": "批准/驳回审核",
     "admin:users": "用户与角色管理",
+    "write:labeling_vendor": "导入第三方标注回传包",
+    "write:labeling_assign": "分配标注子任务",
+    "write:delivery_submit": "提交数据送标申请",
+    "read:deliveries": "查看批次送标台账",
 }
 
 
 def init_database() -> None:
     MANIFESTS.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    # 标注质检表（audit/review.py，不通过 Base 自动发现）
+    try:
+        from as_platform.audit.review import LabelingReview
+        LabelingReview.__table__.create(bind=engine, checkfirst=True)
+    except Exception:
+        pass
     with session_scope() as db:
         _ensure_user_columns(db)
+        _ensure_dataset_candidate_columns(db)
+        _ensure_labeling_campaign_columns(db)
+        _ensure_feishu_bitable_columns(db)
+        _ensure_approval_columns(db)
+        _ensure_operation_log_columns(db)
         _seed_roles_permissions(db)
+        _seed_fleet_demo(db)
         _import_jsonl_if_empty(db)
         _sync_postgres_sequences(db)
 
@@ -77,6 +103,20 @@ def _seed_roles_permissions(db: Session) -> None:
             db.flush()
         role.permissions = [perm_map[c] for c in perm_codes if c in perm_map]
 
+
+
+
+def _seed_fleet_demo(db: Session) -> None:
+    if db.query(FleetVehicle).count() > 0:
+        return
+    try:
+        from as_platform.config import FLEET_MOCK_SEED
+        if not FLEET_MOCK_SEED:
+            return
+        from as_platform.fleet.mock_seed import seed_demo_fleet
+        seed_demo_fleet(db)
+    except Exception:
+        pass
 
 def _import_jsonl_if_empty(db: Session) -> None:
     if db.query(Approval).count() == 0 and APPROVAL_QUEUE.is_file():
@@ -153,6 +193,8 @@ def user_has_permission(user: User, permission: str) -> bool:
             # register_batch 专用权限
             if permission == "write:approval_submit:register" and p.code == "write:approval_submit":
                 return True
+            if permission == "write:delivery_submit" and p.code == "write:approval_submit:register":
+                return True
     return False
 
 
@@ -222,6 +264,42 @@ def _sync_postgres_sequences(db: Session) -> None:
     )
 
 
+def _ensure_dataset_candidate_columns(db: Session) -> None:
+    columns = {
+        "mode": "VARCHAR(64)",
+        "inbox_path": "VARCHAR(1024)",
+        "promoted_batch": "VARCHAR(128)",
+        "external_id": "VARCHAR(128)",
+        "feishu_record_id": "VARCHAR(64)",
+    }
+    _ensure_table_columns(db, "dataset_candidates", columns)
+
+
+def _ensure_feishu_bitable_columns(db: Session) -> None:
+    _ensure_dataset_candidate_columns(db)
+
+
+def _ensure_labeling_campaign_columns(db: Session) -> None:
+    columns = {
+        "assigned_to_user_id": "INTEGER",
+        "assigned_to_name": "VARCHAR(128)",
+    }
+    _ensure_table_columns(db, "labeling_campaigns", columns)
+
+
+def _ensure_table_columns(db: Session, table: str, columns: dict[str, str]) -> None:
+    if IS_POSTGRES:
+        for column, column_type in columns.items():
+            db.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {column_type}"))
+        return
+    if IS_SQLITE:
+        rows = db.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for column, column_type in columns.items():
+            if column not in existing:
+                db.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))
+
+
 def _ensure_user_columns(db: Session) -> None:
     user_columns = {
         "feishu_user_id": "VARCHAR(64)",
@@ -240,3 +318,20 @@ def _ensure_user_columns(db: Session) -> None:
         for column, column_type in user_columns.items():
             if column not in existing:
                 db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {column_type}"))
+        db.commit()
+
+
+def _ensure_approval_columns(db: Session) -> None:
+    _ensure_table_columns(db, "approvals", {"rejection_category": "VARCHAR(32) DEFAULT ''"})
+
+
+def _ensure_operation_log_columns(db: Session) -> None:
+    """确保 operation_logs 表存在并包含所有列。"""
+    inspector_args = {}
+    bind = db.get_bind()
+    if hasattr(bind, "url") and "postgresql" in str(getattr(bind, "url", "")):
+        inspector_args["schema"] = "public"
+    try:
+        OperationLog.__table__.create(bind=db.get_bind(), checkfirst=True)
+    except Exception:
+        pass

@@ -68,4 +68,6 @@ def can_submit_action(user: User, action: str) -> bool:
         return True
     if action == "register_batch" and user_has_permission(user, "write:approval_submit:register"):
         return True
+    if action == "delivery_ingest" and user_has_permission(user, "write:delivery_submit"):
+        return True
     return False

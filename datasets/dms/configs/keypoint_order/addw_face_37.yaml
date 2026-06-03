@@ -1,0 +1,43 @@
+# addw_face：37 点顺序与 Label Studio dms_pose.xml 中 kp_XX 标签一一对应
+task: addw_face
+kpt_shape: [37, 3]
+class_names:
+  0: face
+keypoints:
+  - {id: 0, label: kp_00}
+  - {id: 1, label: kp_01}
+  - {id: 2, label: kp_02}
+  - {id: 3, label: kp_03}
+  - {id: 4, label: kp_04}
+  - {id: 5, label: kp_05}
+  - {id: 6, label: kp_06}
+  - {id: 7, label: kp_07}
+  - {id: 8, label: kp_08}
+  - {id: 9, label: kp_09}
+  - {id: 10, label: kp_10}
+  - {id: 11, label: kp_11}
+  - {id: 12, label: kp_12}
+  - {id: 13, label: kp_13}
+  - {id: 14, label: kp_14}
+  - {id: 15, label: kp_15}
+  - {id: 16, label: kp_16}
+  - {id: 17, label: kp_17}
+  - {id: 18, label: kp_18}
+  - {id: 19, label: kp_19}
+  - {id: 20, label: kp_20}
+  - {id: 21, label: kp_21}
+  - {id: 22, label: kp_22}
+  - {id: 23, label: kp_23}
+  - {id: 24, label: kp_24}
+  - {id: 25, label: kp_25}
+  - {id: 26, label: kp_26}
+  - {id: 27, label: kp_27}
+  - {id: 28, label: kp_28}
+  - {id: 29, label: kp_29}
+  - {id: 30, label: kp_30}
+  - {id: 31, label: kp_31}
+  - {id: 32, label: kp_32}
+  - {id: 33, label: kp_33}
+  - {id: 34, label: kp_34}
+  - {id: 35, label: kp_35}
+  - {id: 36, label: kp_36}

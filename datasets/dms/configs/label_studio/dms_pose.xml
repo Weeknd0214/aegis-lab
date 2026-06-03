@@ -1,0 +1,46 @@
+<View>
+  <Image name="image" value="$image" zoom="true"/>
+  <RectangleLabels name="bbox" toName="image">
+    <Label value="face"/>
+  </RectangleLabels>
+  <KeyPointLabels name="kpts" toName="image" choice="single">
+    <Label value="kp_00" maxUsages="1"/>
+    <Label value="kp_01" maxUsages="1"/>
+    <Label value="kp_02" maxUsages="1"/>
+    <Label value="kp_03" maxUsages="1"/>
+    <Label value="kp_04" maxUsages="1"/>
+    <Label value="kp_05" maxUsages="1"/>
+    <Label value="kp_06" maxUsages="1"/>
+    <Label value="kp_07" maxUsages="1"/>
+    <Label value="kp_08" maxUsages="1"/>
+    <Label value="kp_09" maxUsages="1"/>
+    <Label value="kp_10" maxUsages="1"/>
+    <Label value="kp_11" maxUsages="1"/>
+    <Label value="kp_12" maxUsages="1"/>
+    <Label value="kp_13" maxUsages="1"/>
+    <Label value="kp_14" maxUsages="1"/>
+    <Label value="kp_15" maxUsages="1"/>
+    <Label value="kp_16" maxUsages="1"/>
+    <Label value="kp_17" maxUsages="1"/>
+    <Label value="kp_18" maxUsages="1"/>
+    <Label value="kp_19" maxUsages="1"/>
+    <Label value="kp_20" maxUsages="1"/>
+    <Label value="kp_21" maxUsages="1"/>
+    <Label value="kp_22" maxUsages="1"/>
+    <Label value="kp_23" maxUsages="1"/>
+    <Label value="kp_24" maxUsages="1"/>
+    <Label value="kp_25" maxUsages="1"/>
+    <Label value="kp_26" maxUsages="1"/>
+    <Label value="kp_27" maxUsages="1"/>
+    <Label value="kp_28" maxUsages="1"/>
+    <Label value="kp_29" maxUsages="1"/>
+    <Label value="kp_30" maxUsages="1"/>
+    <Label value="kp_31" maxUsages="1"/>
+    <Label value="kp_32" maxUsages="1"/>
+    <Label value="kp_33" maxUsages="1"/>
+    <Label value="kp_34" maxUsages="1"/>
+    <Label value="kp_35" maxUsages="1"/>
+    <Label value="kp_36" maxUsages="1"/>
+  </KeyPointLabels>
+</View>
+

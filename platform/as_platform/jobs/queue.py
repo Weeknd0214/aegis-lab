@@ -62,12 +62,24 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         return rec.to_dict() if rec else None
 
 
-def list_jobs(status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+def list_jobs(
+    status: str | None = None,
+    *,
+    offset: int = 0,
+    limit: int = 20,
+) -> dict[str, Any]:
     with session_scope() as db:
         q = db.query(Job).order_by(Job.created_at.desc())
         if status:
             q = q.filter(Job.status == status)
-        return [j.to_dict() for j in q.limit(limit).all()]
+        total = q.count()
+        rows = q.offset(max(0, offset)).limit(max(1, limit)).all()
+        return {
+            "items": [j.to_dict() for j in rows],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
 
 
 def _patch(job_id: str, **fields: Any) -> dict[str, Any] | None:
@@ -124,12 +136,25 @@ def _run_job(job_id: str) -> None:
             with trace_span("job_end", job_id=job_id, status="succeeded"):
                 pass
             _sync_approval(job.get("approval_id"), "executed", persisted)
+            if job.get("action") == "labeling_export":
+                from as_platform.labeling.batch_stage import on_labeling_export_job_succeeded
+
+                on_labeling_export_job_succeeded(job)
         except Exception as e:
             _patch(job_id, status="failed", finished_at=_now(), result={"ok": False, "error": str(e)})
             publish("job.failed", {"job_id": job_id, "error": str(e)})
             with trace_span("job_end", job_id=job_id, status="failed", error=str(e)):
                 pass
             _sync_approval(job.get("approval_id"), "failed", {"error": str(e)})
+            if job.get("action") == "delivery_ingest":
+                from as_platform.deliveries.service import mark_delivery_ingest_failed
+
+                params = job.get("params") or {}
+                mark_delivery_ingest_failed(
+                    params.get("delivery_id"),
+                    job.get("approval_id"),
+                    str(e),
+                )
 
 
 def _sync_approval(approval_id: str | None, status: str, result: dict) -> None:

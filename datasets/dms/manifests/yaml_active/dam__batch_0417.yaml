@@ -1,0 +1,7 @@
+# dam__batch_0417 — packs: dms_v1
+path: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/dam/batch_0417
+train: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/dam_0417/images/train
+val: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/dam_0417/images/val
+
+nc: 15
+names: ["face", "eye_open", "eye_partially_open", "eye_close", "mouth_open", "mouth_partially_open", "mouth_close", "side_face", "nod_face", "glasses", "sunglasses", "smoke", "phone", "driver", "rise_face"]

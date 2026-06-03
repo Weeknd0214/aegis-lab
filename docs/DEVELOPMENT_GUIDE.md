@@ -143,6 +143,13 @@ HSAP/
 3. upsert 用户并签发 JWT
 4. 前端保存 token，后续所有 API 带 `Bearer`
 
+### 5.4 飞书多维表格（内网出站）
+
+- 操作：[FEISHU_BITABLE_OPS.md](./FEISHU_BITABLE_OPS.md)；开发：[FEISHU_INTEGRATION_DEV.md](./FEISHU_INTEGRATION_DEV.md)
+- 配置：`manifests/feishu.env` 中 `FEISHU_BITABLE_APP_TOKEN`、`FEISHU_BITABLE_TABLE_ID`
+- API：`GET/POST /api/v1/integrations/feishu/bitable/*`；`FEISHU_BITABLE_SYNC_ENABLED=1` 时后台轮询回写
+- 验证：`bash scripts/feishu_bitable_verify.sh`
+
 ---
 
 ## 6. 审核与任务执行链路
@@ -179,7 +186,7 @@ HSAP/
 关键页面：
 
 - 登录页（飞书/开发登录）
-- 送标工作台
+- 送标工作台（操作 SOP 见 [LABELING_SOP.md](./LABELING_SOP.md)）
 - 数据目录
 - 审核管理
 - Job 监控

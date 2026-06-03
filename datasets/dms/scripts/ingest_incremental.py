@@ -236,7 +236,7 @@ def ingest_yolo(
 
     if is_voc:
         if tcfg["type"] != "detect":
-            raise SystemExit("VOC xml 仅支持 detect 任务（dam / dam_0417）")
+            raise SystemExit("VOC xml 仅支持 detect 任务（dam 各批次等）")
         staging = data_root.parent / "_staging_voc" / task
         staging_parent = staging.parent
         if staging.exists() and not dry_run:
@@ -384,7 +384,11 @@ def ingest_one(
     src: Path,
     args: argparse.Namespace,
 ) -> dict:
-    tcfg = reg["tasks"][task]
+    from task_registry import get_mode_config, resolve_task_id
+
+    submode = getattr(args, "mode", None) or getattr(args, "submode", None)
+    task, submode = resolve_task_id(task, submode)
+    tcfg = get_mode_config(task, submode, reg)
     pack = getattr(args, "pack", None) or "dms_v1"
     data_root = pack_task_data_root(root, pack, tcfg["task_dir"])
     sk = split_kwargs(reg, args)
@@ -449,23 +453,42 @@ def ingest_all_sources(root: Path, reg: dict, task: str, args: argparse.Namespac
 
 
 def ingest_all_inbox(root: Path, reg: dict, args: argparse.Namespace) -> None:
+    from task_registry import inbox_dir
+
+    pack = getattr(args, "pack", None) or "dms_v1"
     for task, tcfg in reg["tasks"].items():
-        inbox = root / tcfg.get("inbox", f"inbox/{task}")
-        if not inbox.is_dir():
-            continue
-        batches = sorted(d for d in inbox.iterdir() if d.is_dir())
-        if not batches:
-            continue
-        print(f"\n>>> inbox {task}: {len(batches)} batch(es)")
-        for batch in batches:
-            ingest_one(root, reg, task, batch, args)
-            if not args.dry_run:
-                append_log(root, {"src": str(batch), "task": task, "pack": pack, "via": "inbox"})
+        if tcfg.get("type") == "multi":
+            for mode in (tcfg.get("modes") or {}):
+                inbox = inbox_dir(root, task, mode, reg)
+                if not inbox.is_dir():
+                    continue
+                batches = sorted(d for d in inbox.iterdir() if d.is_dir())
+                if not batches:
+                    continue
+                print(f"\n>>> inbox {task}/{mode}: {len(batches)} batch(es)")
+                args.submode = mode
+                for batch in batches:
+                    ingest_one(root, reg, task, batch, args)
+                    if not args.dry_run:
+                        append_log(root, {"src": str(batch), "task": task, "mode": mode, "pack": pack, "via": "inbox"})
+        else:
+            inbox = inbox_dir(root, task, None, reg)
+            if not inbox.is_dir():
+                continue
+            batches = sorted(d for d in inbox.iterdir() if d.is_dir())
+            if not batches:
+                continue
+            print(f"\n>>> inbox {task}: {len(batches)} batch(es)")
+            for batch in batches:
+                ingest_one(root, reg, task, batch, args)
+                if not args.dry_run:
+                    append_log(root, {"src": str(batch), "task": task, "pack": pack, "via": "inbox"})
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="DMS 全任务增量接入")
-    p.add_argument("--task", help="registry 任务名；与 --all-inbox 二选一")
+    p.add_argument("--task", help="registry 任务名（forward 等 multi 任务需配合 --submode）")
+    p.add_argument("--submode", choices=("detect", "classify"), help="multi 任务子模式，如 forward 的 detect/classify")
     p.add_argument("--src", type=Path, help="新数据目录")
     p.add_argument("--all-inbox", action="store_true", help="处理所有 inbox/<task>/* 批次")
     p.add_argument("--all-sources", action="store_true", help="处理任务 data/sources/* 下所有待合并批次")

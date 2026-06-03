@@ -29,10 +29,13 @@ def ping_redis() -> bool:
 
 
 def publish(event: str, payload: dict[str, Any]) -> None:
-    r = get_redis()
-    if not r:
+    try:
+        r = get_redis()
+        if not r:
+            return
+        r.publish("as:events", json.dumps({"event": event, **payload}, ensure_ascii=False))
+    except Exception:
         return
-    r.publish("as:events", json.dumps({"event": event, **payload}, ensure_ascii=False))
 
 
 def push_job(job_id: str) -> None:

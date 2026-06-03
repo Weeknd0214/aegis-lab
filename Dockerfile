@@ -1,12 +1,8 @@
 # syntax=docker/dockerfile:1
 
-# ── React 构建 ──
-FROM node:22-alpine AS web-build
-WORKDIR /web
-COPY platform/web/package.json platform/web/package-lock.json* ./
-RUN npm ci --ignore-scripts 2>/dev/null || npm install
-COPY platform/web/ ./
-RUN npm run build
+# ── HSAP UI：Label Studio 工程 (apps/hsap-platform) ──
+# 构建前在宿主机执行: bash scripts/build_hsap_ls_ui.sh
+# 或 CI 将 dist 拷入 platform/ui-hsap/dist
 
 # ── Platform API ──
 FROM python:3.11-slim AS platform
@@ -26,9 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY platform/ ./platform/
 COPY scripts/ ./scripts/
+COPY datasets/ ./datasets/
 COPY as.py workflow.registry.yaml ./
 COPY algorithms/registry.yaml ./algorithms/
-COPY --from=web-build /web/dist ./platform/web/dist
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

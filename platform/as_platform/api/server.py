@@ -23,6 +23,12 @@ from as_platform.agents.graphs.train_promote_flow import run_train_promote_flow
 from as_platform.agents.tools import TOOL_REGISTRY, invoke_tool
 from as_platform.agents.trace import get_trace, list_traces
 from as_platform.api.auth_routes import router as auth_router
+from as_platform.api.fleet_routes import router as fleet_router
+from as_platform.api.delivery_routes import router as delivery_router
+from as_platform.api.feishu_routes import router as feishu_router
+from as_platform.api.labeling_routes import router as labeling_router
+from as_platform.api.models_routes import router as models_router
+from as_platform.api.system_routes import router as system_router
 from as_platform.audit.queue import (
     ACTION_LABELS,
     ACTIONS_REQUIRING_APPROVAL,
@@ -34,7 +40,16 @@ from as_platform.audit.queue import (
 )
 from as_platform.audit.preview import find_image_ref, list_scope_images, render_overlay, resolve_approval_scope
 from as_platform.auth.deps import can_submit_action, get_current_user, require_any_permission, require_permission
-from as_platform.config import IS_POSTGRES, PLATFORM_DIR, PLATFORM_WEB, WORKSPACE
+from as_platform.config import (
+    FEISHU_BITABLE_SYNC_ENABLED,
+    FEISHU_BITABLE_SYNC_INTERVAL_SEC,
+    FLEET_MOCK_SIMULATE,
+    FLEET_SIM_INTERVAL_SEC,
+    IS_POSTGRES,
+    PLATFORM_DIR,
+    PLATFORM_WEB,
+    WORKSPACE,
+)
 from as_platform.data.core import get_catalog, get_pending_report, register_batch, warmup_catalog_cache
 from as_platform.data.ingest import UnknownFormatError, inspect_uploaded_dataset
 from as_platform.data.lake import (
@@ -42,10 +57,11 @@ from as_platform.data.lake import (
     get_candidate,
     link_candidate_analysis_job,
     list_candidates as list_data_candidates,
+    promote_candidate_to_inbox,
     write_candidate_upload,
 )
 from as_platform.data.organize import organize_batch
-from as_platform.db.engine import check_connection
+from as_platform.db.engine import check_connection, session_scope
 from as_platform.db.init_db import init_database
 from as_platform.db.models import User
 from as_platform.jobs.queue import enqueue_job, get_job, list_jobs
@@ -59,16 +75,51 @@ from as_platform.training.service import (
 )
 
 
+def _feishu_bitable_sync_loop() -> None:
+    import time
+
+    from as_platform.jobs.feishu_bitable_sync import run_sync_cycle
+
+    while True:
+        time.sleep(FEISHU_BITABLE_SYNC_INTERVAL_SEC)
+        try:
+            run_sync_cycle()
+        except Exception:
+            pass
+
+
+def _fleet_sim_loop() -> None:
+    import time
+    from as_platform.fleet import service as fleet_svc
+    while True:
+        time.sleep(max(3, FLEET_SIM_INTERVAL_SEC))
+        try:
+            with session_scope() as db:
+                fleet_svc.simulate_tick(db)
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_database()
     threading.Thread(target=warmup_catalog_cache, daemon=True, name="catalog-warmup").start()
+    if FLEET_MOCK_SIMULATE:
+        threading.Thread(target=_fleet_sim_loop, daemon=True, name="fleet-sim",).start()
+    if FEISHU_BITABLE_SYNC_ENABLED:
+        threading.Thread(target=_feishu_bitable_sync_loop, daemon=True, name="feishu-bitable-sync").start()
     yield
 
 
 app = FastAPI(title="华胥智能主动安全平台", version="1.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(auth_router)
+app.include_router(fleet_router)
+app.include_router(labeling_router)
+app.include_router(feishu_router)
+app.include_router(delivery_router)
+app.include_router(models_router)   # 模型管理: /api/v1/models/*
+app.include_router(system_router)   # 系统管理: /api/v1/system/*
 _UI_DIR: Path | None = None
 
 
@@ -152,6 +203,19 @@ def api_pending(_user: Annotated[User, Depends(require_permission("read:pending"
     return get_pending_report()
 
 
+@app.get("/api/v1/pending/gates")
+def api_pending_gates(_user: Annotated[User, Depends(require_permission("read:pending"))]) -> dict[str, Any]:
+    """ML 自动化 P0：build 门禁与 manifest 对齐说明。"""
+    return {
+        "build_validate": (
+            "python as.py build dms <task> <pack> 入库后默认执行 scripts/validate_dms_tasks.py；"
+            "仅调试可用 --skip-validate"
+        ),
+        "manifest_smoke": "bash HSAP/scripts/smoke_manifest_alignment.sh",
+        "pending_cli": "python as.py pending",
+    }
+
+
 @app.get("/api/v1/catalog")
 def api_catalog(
     _user: Annotated[User, Depends(require_permission("read:catalog"))],
@@ -193,9 +257,10 @@ def api_actions(_user: Annotated[User, Depends(require_permission("read:audit"))
 def api_jobs(
     _user: Annotated[User, Depends(require_permission("read:jobs"))],
     status: str | None = None,
-    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
 ) -> dict[str, Any]:
-    return {"items": list_jobs(status=status, limit=limit)}
+    return list_jobs(status=status, offset=offset, limit=limit)
 
 
 @app.get("/api/v1/jobs/{job_id}")
@@ -223,9 +288,12 @@ def api_training_records(
     kind: str | None = None,
     status: str | None = None,
     task: str | None = None,
-    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
 ) -> dict[str, Any]:
-    return list_training_records(project=project, kind=kind, status=status, task=task, limit=limit)
+    return list_training_records(
+        project=project, kind=kind, status=status, task=task, offset=offset, limit=limit
+    )
 
 
 @app.get("/api/v1/training/records/{job_id}")
@@ -310,9 +378,10 @@ def api_agent_invoke(body: AgentInvokeBody, _user: Annotated[User, Depends(get_c
 def api_list_approvals(
     _user: Annotated[User, Depends(require_permission("read:audit"))],
     status: str | None = None,
-    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
 ) -> dict[str, Any]:
-    return {"items": list_approvals(status=status, limit=limit)}
+    return list_approvals(status=status, offset=offset, limit=limit)
 
 
 @app.get("/api/v1/approvals/{record_id}")
@@ -346,13 +415,29 @@ def api_approval_preview(
                 "exists": batch_dir.is_dir(),
             }
         )
+    params = rec.get("params") or {}
+    title = str(rec.get("action_label") or rec.get("action") or record_id)
+    summary = ""
+    if rec.get("action") == "delivery_ingest":
+        title = f"数据送标入湖 · {params.get('batch_name') or '—'}"
+        parts = [
+            f"项目 {params.get('project') or 'dms'}",
+            f"任务 {params.get('task') or '—'}",
+            f"路径 {params.get('data_path') or '—'}",
+        ]
+        if params.get("estimated_count"):
+            parts.append(f"约 {params['estimated_count']} 张")
+        summary = " · ".join(parts)
     return {
         "approval": rec,
+        "title": title,
+        "summary": summary,
         "scope_label": scope.get("scope_label"),
         "task": scope.get("task"),
         "pack": scope.get("pack"),
         "class_names": scope.get("class_names"),
         "batches": batch_summaries,
+        "delivery": params if rec.get("action") == "delivery_ingest" else None,
     }
 
 
@@ -456,22 +541,29 @@ def api_reject(record_id: str, body: ReviewBody, user: Annotated[User, Depends(r
 
 @app.post("/api/v1/register-batch")
 def api_register_batch(body: RegisterBatchBody, user: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
+    result = None
     if body.skip_audit:
         if not can_submit_action(user, "register_batch"):
             raise HTTPException(403, "无权登记批次")
         try:
-            return register_batch(None, body.project, body.task, body.batch, pack=body.pack, stage=body.stage, engineer=body.engineer, location=body.location)
+            result = register_batch(None, body.project, body.task, body.batch, pack=body.pack, stage=body.stage, engineer=body.engineer, location=body.location)
         except (ValueError, FileNotFoundError) as e:
             raise HTTPException(400, str(e)) from e
-    if not can_submit_action(user, "register_batch"):
-        raise HTTPException(403, "无权提交登记审核")
-    return submit_approval(
-        "register_batch",
-        body.model_dump(exclude={"submitted_by", "skip_audit"}),
-        submitted_by=user.name,
-        submitted_by_user_id=user.id,
-        note="登记 batch.meta",
-    )
+    else:
+        if not can_submit_action(user, "register_batch"):
+            raise HTTPException(403, "无权提交登记审核")
+        result = submit_approval(
+            "register_batch",
+            body.model_dump(exclude={"submitted_by", "skip_audit"}),
+            submitted_by=user.name,
+            submitted_by_user_id=user.id,
+            note="登记 batch.meta",
+        )
+    # 审计日志
+    from as_platform.audit.log_utils import log_op
+    log_op(user_id=user.id, user_name=user.name, category="data", action="register_batch",
+           target_type="batch", target_id=f"{body.project}/{body.task}/{body.batch}", summary=f"登记批次: {body.project}/{body.task}/{body.batch} → {body.stage}")
+    return result
 
 
 @app.post("/api/v1/data/organize")
@@ -498,6 +590,7 @@ async def api_upload_file(
     project: Annotated[str, Form()],
     user: Annotated[User, Depends(require_any_permission("write:approval_submit", "write:approval_submit:register"))],
     task: Annotated[str | None, Form()] = None,
+    mode: Annotated[str | None, Form()] = None,
     file: UploadFile = File(...),
 ) -> dict[str, Any]:
     if not file.filename:
@@ -506,6 +599,7 @@ async def api_upload_file(
         candidate = create_uploaded_candidate(
             project=project,
             task=task,
+            mode=mode,
             original_name=file.filename,
             upload_size_bytes=0,
             submitted_by_name=user.name if user else None,
@@ -525,9 +619,10 @@ async def api_upload_file(
 @app.get("/api/v1/data/candidates")
 def api_data_candidates(
     _user: Annotated[User, Depends(require_permission("read:catalog"))],
-    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
 ) -> dict[str, Any]:
-    return {"items": list_data_candidates(limit=limit)}
+    return list_data_candidates(offset=offset, limit=limit)
 
 
 @app.get("/api/v1/data/candidates/{candidate_id}")
@@ -538,16 +633,270 @@ def api_data_candidate(candidate_id: str, _user: Annotated[User, Depends(require
     return item
 
 
+class PromoteInboxBody(BaseModel):
+    batch: str | None = None
+    mode: str | None = None
+
+
+@app.post("/api/v1/data/candidates/{candidate_id}/promote-inbox")
+def api_promote_candidate_inbox(
+    candidate_id: str,
+    body: PromoteInboxBody,
+    _user: Annotated[User, Depends(require_any_permission("write:approval_submit", "write:approval_submit:register"))],
+) -> dict[str, Any]:
+    try:
+        return promote_candidate_to_inbox(candidate_id, batch=body.batch, mode=body.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.get("/api/v1/data/registry-tasks")
+def api_registry_tasks(
+    _user: Annotated[User, Depends(require_permission("read:catalog"))],
+    project: str = Query("dms"),
+) -> dict[str, Any]:
+    import yaml
+
+    from as_platform.data.core import load_wf, proj_root
+
+    wf = load_wf()
+    if project != "dms":
+        return {"project": project, "tasks": {}}
+    root = proj_root(wf, "dms")
+    reg_path = root / wf["projects"]["dms"]["registry"]
+    if not reg_path.is_file():
+        return {"project": project, "tasks": {}}
+    reg = yaml.safe_load(reg_path.read_text(encoding="utf-8"))
+    import sys
+
+    scripts = WORKSPACE / "datasets" / "dms" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from task_registry import task_defs_for_pending
+
+    return {"project": project, "tasks": task_defs_for_pending(reg)}
+
+
+@app.get("/api/v1/data/scan-inbox")
+def api_scan_inbox(
+    _user: Annotated[User, Depends(require_permission("read:catalog"))],
+    project: str = Query("dms"),
+) -> dict[str, Any]:
+    """扫描 inbox 目录，返回未登记的新批次。"""
+    from as_platform.data.core import get_pending_report, load_wf, proj_root
+
+    wf = load_wf()
+    root = proj_root(wf, project)
+    inbox = root / "inbox"
+    if not inbox.is_dir():
+        return {"project": project, "items": [], "inbox_path": str(inbox)}
+
+    report = get_pending_report()
+    registered = {b.get("batch", "") for b in report.get("batches", [])}
+
+    items: list[dict[str, Any]] = []
+    for task_dir in sorted(inbox.iterdir()):
+        if not task_dir.is_dir():
+            continue
+        for batch_dir in sorted(task_dir.iterdir()):
+            if not batch_dir.is_dir():
+                continue
+            batch_name = batch_dir.name
+            task_name = task_dir.name
+            if batch_name in registered:
+                continue  # 已登记
+
+            # Count images
+            img_count = 0
+            lbl_count = 0
+            has_labels = False
+            for ext in ["*.jpg", "*.jpeg", "*.png", "*.bmp"]:
+                for _ in batch_dir.glob(ext):
+                    img_count += 1
+            if (batch_dir / "labels").is_dir():
+                has_labels = True
+                for ext in ["*.txt", "*.json"]:
+                    for _ in (batch_dir / "labels").glob(ext):
+                        lbl_count += 1
+
+            items.append({
+                "project": project,
+                "task": task_name,
+                "batch": batch_name,
+                "path": str(batch_dir.relative_to(root)),
+                "images": img_count,
+                "labels": lbl_count,
+                "has_labels": has_labels,
+                "stage_hint": "returned" if has_labels and lbl_count > 0 else "raw_pool",
+            })
+
+    return {"project": project, "items": items, "inbox_path": str(inbox)}
+
+
+@app.get("/api/v1/dashboard")
+def api_dashboard(_user: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
+    """首页仪表盘聚合数据。"""
+    from as_platform.data.core import get_pending_report, get_catalog
+    from as_platform.jobs.queue import list_jobs
+
+    # 批次统计
+    report = get_pending_report()
+    batches = report.get("batches", []) or []
+    stage_counts: dict[str, int] = {"raw_pool": 0, "out_for_labeling": 0, "labeling_submitted": 0, "returned": 0, "ingested": 0}
+    for b in batches:
+        s = b.get("stage", "raw_pool") if isinstance(b, dict) else "raw_pool"
+        stage_counts[s] = stage_counts.get(s, 0) + 1
+
+    # 审核统计
+    approvals_pending = list_approvals(status="pending", limit=200)
+    pending_approvals = approvals_pending.get("total", 0)
+
+    # Job 统计
+    jobs_data = list_jobs(limit=5)
+    jobs = jobs_data.get("items", []) or []
+    running_jobs = len([j for j in jobs if isinstance(j, dict) and j.get("status") == "running"])
+
+    # 模型统计
+    try:
+        from as_platform.training.service import get_model_registry
+        models = get_model_registry(project="dms")
+        model_count = len((models.get("models") or []) if isinstance(models, dict) else [])
+    except Exception:
+        model_count = 0
+
+    # 训练记录
+    try:
+        from as_platform.training.service import list_training_records
+        records = list_training_records(limit=5)
+        recent_records = (records.get("items") or [])[:5] if isinstance(records, dict) else []
+    except Exception:
+        recent_records = []
+
+    # 车队
+    try:
+        from as_platform.fleet import service as fleet_svc
+        from as_platform.db.engine import session_scope
+        with session_scope() as db:
+            summary = fleet_svc.get_summary(db) if hasattr(fleet_svc, "get_summary") else {}
+    except Exception:
+        summary = {}
+
+    # 最近活动
+    activity: list[dict[str, Any]] = []
+    for j in jobs[:5]:
+        if isinstance(j, dict):
+            activity.append({"type": "job", "id": j.get("id"), "action": j.get("action"), "status": j.get("status"), "time": j.get("created_at")})
+    for a in (approvals_pending.get("items") or [])[:3]:
+        if isinstance(a, dict):
+            activity.append({"type": "approval", "id": a.get("id"), "action": a.get("action_label") or a.get("action"), "status": a.get("status"), "time": a.get("submitted_at")})
+
+    activity.sort(key=lambda x: str(x.get("time") or ""), reverse=True)
+
+    return {
+        "stages": stage_counts,
+        "total_batches": len(batches),
+        "pending_approvals": pending_approvals,
+        "running_jobs": running_jobs,
+        "model_count": model_count,
+        "fleet": summary,
+        "activity": activity[:8],
+        "recent_training": [{"id": r.get("id"), "action": r.get("action"), "status": r.get("status"), "created_at": r.get("created_at")} for r in recent_records if isinstance(r, dict)],
+    }
+
+
+# ── 世界模型仿真 ──
+
+class SimulateBody(BaseModel):
+    scene: str = "urban_highway"
+    camera: str = "truck_front"
+    weather: str = "clear"
+    objects: list[str] = Field(default_factory=lambda: ["Pedestrain", "Car", "Truck", "Bus"])
+    density: str = "medium"
+    count: int = 100
+    fov_variant: bool = False
+    note: str = ""
+
+
+@app.get("/api/v1/simulate/jobs")
+def api_simulate_jobs(
+    _user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    from as_platform.data.simulate import list_jobs
+    return list_jobs(offset=offset, limit=limit)
+
+
+@app.post("/api/v1/simulate/generate")
+def api_simulate_generate(
+    body: SimulateBody,
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, Any]:
+    from as_platform.data.simulate import submit_job
+    return submit_job(body.model_dump(), user_name=user.name)
+
+
+@app.get("/api/v1/simulate/jobs/{job_id}")
+def api_simulate_job(
+    job_id: str,
+    _user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, Any]:
+    from as_platform.data.simulate import get_job
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job 不存在")
+    return job
+
+
+@app.get("/api/v1/simulate/jobs/{job_id}/images")
+def api_simulate_job_images(
+    job_id: str,
+    _user: Annotated[User, Depends(get_current_user)],
+    offset: int = Query(0, ge=0),
+    limit: int = Query(60, ge=1, le=200),
+) -> dict[str, Any]:
+    from as_platform.data.simulate import get_job_images
+    return get_job_images(job_id, offset=offset, limit=limit)
+
+
+@app.post("/api/v1/simulate/jobs/{job_id}/ingest")
+def api_simulate_ingest(
+    job_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    task: str = Query("adas"),
+) -> dict[str, Any]:
+    from as_platform.data.simulate import ingest_job_to_batch
+    return ingest_job_to_batch(job_id, task=task, user_name=user.name)
+
+
 def _mount_ui() -> None:
     global _UI_DIR
-    for ui in (PLATFORM_WEB, PLATFORM_DIR / "web" / "dist"):
-        if (ui / "index.html").is_file():
-            _UI_DIR = ui
-            app.mount("/assets", StaticFiles(directory=str(ui / "assets")), name="ui-assets")
-            return
+    ui = PLATFORM_WEB
+    if (ui / "index.html").is_file():
+        _UI_DIR = ui
+        assets = ui / "assets"
+        if assets.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets)), name="ui-assets")
+        annotate = ui / "annotate"
+        if annotate.is_dir():
+            app.mount("/annotate", StaticFiles(directory=str(annotate), html=True), name="ui-annotate")
+        return
 
 
 _mount_ui()
+
+
+@app.get("/labeling/campaigns/{campaign_id}/annotate", include_in_schema=False)
+def serve_annotate_app(campaign_id: str):
+    """标注编辑器页面 — 返回旧 Label Studio 构建产物"""
+    if not _UI_DIR:
+        raise HTTPException(404, "UI not built")
+    annotate_index = _UI_DIR / "annotate" / "index.html"
+    if annotate_index.is_file():
+        return FileResponse(annotate_index)
+    raise HTTPException(404, "标注编辑器未构建")
 
 
 @app.get("/{full_path:path}", include_in_schema=False)

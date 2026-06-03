@@ -13,7 +13,7 @@ from as_platform.config import WORKSPACE
 CATALOG_CACHE_FILE = WORKSPACE / "manifests" / "catalog_cache.json"
 CATALOG_CACHE_TTL_SEC = int(os.environ.get("AS_CATALOG_CACHE_TTL_SEC", "300"))
 CATALOG_USE_REPORTS = os.environ.get("AS_CATALOG_USE_REPORTS", "1").lower() in ("1", "true", "yes")
-CATALOG_CACHE_VERSION = 3
+CATALOG_CACHE_VERSION = 7
 
 REPORTS_DIR = WORKSPACE / "reports"
 DMS_SUMMARY_CSV = REPORTS_DIR / "dms_task_image_summary.csv"
@@ -111,8 +111,14 @@ def build_catalog_signature(wf: dict, proj_root_fn) -> dict[str, Any]:
                 import yaml
 
                 reg = yaml.safe_load(reg_path.read_text(encoding="utf-8"))
-                for task in (reg.get("tasks") or {}).keys():
-                    dirs.append(_dir_fingerprint(root / "inbox" / task))
+                for task, tcfg in (reg.get("tasks") or {}).items():
+                    if tcfg.get("type") == "multi":
+                        for mcfg in (tcfg.get("modes") or {}).values():
+                            rel = mcfg.get("inbox", "")
+                            if rel:
+                                dirs.append(_dir_fingerprint(root / rel))
+                    else:
+                        dirs.append(_dir_fingerprint(root / (tcfg.get("inbox") or f"inbox/{task}")))
         if pname == "lane":
             dirs.append(_dir_fingerprint(_pack_registry_path("lane", root, wf), scan_children=False))
 
@@ -140,13 +146,41 @@ def save_disk_cache(payload: dict[str, Any]) -> None:
     CATALOG_CACHE_FILE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
+def _iter_dms_packs(task_entry: dict[str, Any]):
+    modes = task_entry.get("modes")
+    if isinstance(modes, dict):
+        for mode_entry in modes.values():
+            for pack in mode_entry.get("packs") or []:
+                if isinstance(pack, dict):
+                    yield pack, mode_entry.get("type")
+        return
+    for pack in task_entry.get("packs") or []:
+        if isinstance(pack, dict):
+            yield pack, task_entry.get("type")
+
+
+def _entry_needs_bbox_refresh(entry: dict[str, Any]) -> bool:
+    if entry.get("type") == "classify":
+        return False
+    has_class = bool(entry.get("class_counts"))
+    any_pts = False
+    any_boxes = False
+    for pack in entry.get("packs") or []:
+        if pack.get("bbox_points"):
+            any_pts = True
+        if int(pack.get("total_boxes") or 0) > 0:
+            any_boxes = True
+    return not any_pts and (any_boxes or has_class)
+
+
 def _catalog_has_empty_bbox(catalog: dict[str, Any]) -> bool:
     for task in (catalog.get("dms") or {}).values():
-        for pack in task.get("packs") or []:
-            boxes = int(pack.get("total_boxes") or 0)
-            pts = pack.get("bbox_points") or []
-            if boxes > 0 and not pts:
-                return True
+        if task.get("type") == "multi":
+            for mode_entry in (task.get("modes") or {}).values():
+                if _entry_needs_bbox_refresh(mode_entry):
+                    return True
+        elif _entry_needs_bbox_refresh(task):
+            return True
     return False
 
 
@@ -198,7 +232,8 @@ def store_catalog_cache(signature: dict[str, Any], data: dict[str, Any], *, buil
         "data": data,
     }
     _CATALOG_MEM_CACHE = payload
-    save_disk_cache(payload)
+    if not _catalog_has_empty_bbox(data):
+        save_disk_cache(payload)
     return payload
 
 

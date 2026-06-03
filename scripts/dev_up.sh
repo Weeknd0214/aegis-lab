@@ -8,6 +8,11 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
   echo "已创建 .env（默认挂载本仓库；大文件数据可设置 AS_WORKSPACE_ROOT）"
 fi
+DEFAULT_WS="$(cd "$ROOT/.." && pwd)/workspace"
+if [[ -d "$DEFAULT_WS/DMS" ]] && ! grep -q '^AS_WORKSPACE_ROOT=' .env 2>/dev/null; then
+  echo "AS_WORKSPACE_ROOT=$DEFAULT_WS" >> .env
+  echo "已写入 AS_WORKSPACE_ROOT=$DEFAULT_WS"
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "未安装 Docker。Ubuntu: sudo apt install docker.io docker-compose-v2"

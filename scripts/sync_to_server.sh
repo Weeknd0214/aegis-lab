@@ -27,7 +27,6 @@ EXCLUDE=(
   --exclude 'log/'
   --exclude 'tmp/'
   --exclude 'node_modules/'
-  --exclude 'platform/web/dist/'
 )
 
 echo "HSAP: $AS"

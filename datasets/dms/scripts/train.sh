@@ -17,20 +17,21 @@ TASK="${1:?用法: $0 <task> [full|continue]}"
 TRAIN_MODE="${2:-full}"
 
 REG="$DATASET_ROOT/datasets.registry.yaml"
-YAML="$DATASET_ROOT/manifests/yaml_active/${TASK}.yaml"
 VERSIONS="$DATASET_ROOT/manifests/train_versions.yaml"
+SUBMODE="${SUBMODE:-}"
 
-if [[ ! -f "$YAML" ]]; then
-  echo "找不到 yaml: $YAML"
-  exit 1
-fi
-
-read -r TYPE MODE MODEL EPOCHS LR0 IMGSZ RUN_SUFFIX <<< "$(python3 - <<PY
-import yaml
+read -r YAML_KEY TYPE MODE MODEL EPOCHS LR0 IMGSZ RUN_SUFFIX <<< "$(python3 - <<PY
+import sys
 from pathlib import Path
+import yaml
+sys.path.insert(0, str(Path("$DATASET_ROOT/scripts")))
+from task_registry import get_mode_config, resolve_task_id, train_yaml_key
 reg = yaml.safe_load(Path("$REG").read_text())
-tcfg = reg["tasks"]["$TASK"]
-typ = tcfg["type"]
+task, sub = resolve_task_id("$TASK", "$SUBMODE" or None)
+mcfg = get_mode_config(task, sub, reg)
+typ = mcfg["type"]
+yaml_key = train_yaml_key(task, sub, reg)
+print(yaml_key, end=" ")
 train_mode = "$TRAIN_MODE" if "$TRAIN_MODE" in ("full", "continue") else reg.get("train", {}).get("mode", "full")
 t = reg.get("train", {}).get(typ, reg.get("train_defaults", {}).get(typ, {}))
 if train_mode == "continue":
@@ -49,6 +50,12 @@ print(typ, mode, model, epochs, lr0, imgsz, suffix)
 PY
 )"
 
+YAML="$DATASET_ROOT/manifests/yaml_active/${YAML_KEY}.yaml"
+if [[ ! -f "$YAML" ]]; then
+  echo "找不到 yaml: $YAML（请先 refresh_yaml.py）"
+  exit 1
+fi
+
 # continue 模式：warm_start 为空则读 train_versions.yaml
 if [[ "$TRAIN_MODE" == "continue" && ( "$MODEL" == "null" || "$MODEL" == "None" || -z "$MODEL" ) ]]; then
   MODEL=$(python3 - <<PY 2>/dev/null || true
@@ -57,7 +64,7 @@ from pathlib import Path
 p = Path("$VERSIONS")
 if p.is_file():
     v = yaml.safe_load(p.read_text()) or {}
-    c = v.get("$TASK", {}).get("current")
+    c = v.get("$YAML_KEY", {}).get("current")
     if c: print(c)
 PY
 )
@@ -68,9 +75,9 @@ if [[ "$TRAIN_MODE" == "continue" && ( -z "$MODEL" || "$MODEL" == "null" ) ]]; t
   exit 1
 fi
 
-RUN_NAME="${TASK}_${RUN_SUFFIX}_$(date +%Y%m%d)"
+RUN_NAME="${YAML_KEY}_${RUN_SUFFIX}_$(date +%Y%m%d)"
 
-echo "task=$TASK type=$TYPE yolo_mode=$MODE train_mode=$TRAIN_MODE"
+echo "task=$TASK submode=$SUBMODE yaml_key=$YAML_KEY type=$TYPE yolo_mode=$MODE train_mode=$TRAIN_MODE"
 echo "data=$YAML"
 echo "model=$MODEL epochs=$EPOCHS lr0=$LR0 imgsz=$IMGSZ name=$RUN_NAME"
 
@@ -93,4 +100,4 @@ yolo "$MODE" train \
 
 BEST="runs/${MODE}/${RUN_NAME}/weights/best.pt"
 echo "完成: $BEST"
-echo "请更新 manifests/train_versions.yaml 中 $TASK.current = $BEST"
+echo "请更新 manifests/train_versions.yaml 中 $YAML_KEY.current = $BEST"

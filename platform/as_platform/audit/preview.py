@@ -264,6 +264,33 @@ def resolve_approval_scope(action: str, params: dict[str, Any]) -> dict[str, Any
             "batches": batches,
         }
 
+    if action == "delivery_ingest":
+        data_path = (p.get("data_path") or "").strip()
+        if not data_path:
+            raise ValueError("缺少 data_path 参数")
+        src = Path(data_path)
+        project = p.get("project") or "dms"
+        task = p.get("task") or ""
+        batch_name = p.get("batch_name") or src.name
+        scope_label = f"数据送标入湖 · {project}"
+        if task:
+            scope_label += f" · {task}"
+        scope_label += f" · {batch_name}"
+        return {
+            "project": project,
+            "task": task or None,
+            "pack": None,
+            "scope_label": scope_label,
+            "class_names": {},
+            "batches": [
+                {
+                    "path": src,
+                    "batch": batch_name,
+                    "location": "delivery",
+                }
+            ],
+        }
+
     if action in ("train_dms", "promote_dms", "eval_dms"):
         task = p.get("task")
         if not task:

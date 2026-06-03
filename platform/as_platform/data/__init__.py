@@ -15,6 +15,7 @@ from as_platform.data.lake import (
     get_candidate,
     link_candidate_analysis_job,
     list_candidates,
+    promote_candidate_to_inbox,
     write_candidate_upload,
 )
 
@@ -34,4 +35,5 @@ __all__ = [
     "get_candidate",
     "link_candidate_analysis_job",
     "analyze_uploaded_candidate",
+    "promote_candidate_to_inbox",
 ]

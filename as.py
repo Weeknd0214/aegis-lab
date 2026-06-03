@@ -236,6 +236,8 @@ def cmd_pending(wf: dict, as_json: bool) -> None:
         print(f"\n  批次详情 ({len(pending_batches)}):")
         for b in pending_batches[:8]:
             print(f"    {b.get('task') or b.get('pack')}/{b.get('batch')}: {b.get('stage')} @ {b.get('location')}")
+    print("\n  [门禁] build 后默认 validate：python as.py build dms <task> <pack>（勿随意 --skip-validate）")
+    print("  [门禁] manifest 对齐：bash HSAP/scripts/smoke_manifest_alignment.sh")
 
 
 def cmd_register_batch(

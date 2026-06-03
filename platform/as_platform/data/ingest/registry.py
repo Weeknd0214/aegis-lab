@@ -5,6 +5,7 @@ from pathlib import Path
 
 from as_platform.data.ingest.base import IngestAdapter, IngestContext, NormalizedDataset
 from as_platform.data.ingest.dms_coco import DmsCocoAdapter
+from as_platform.data.ingest.dms_inbox_raw import DmsInboxRawAdapter
 from as_platform.data.ingest.dms_yolo import DmsYoloAdapter
 from as_platform.data.ingest.lane_lines import LaneLinesAdapter
 from as_platform.data.ingest.lane_mask import LaneMaskAdapter
@@ -17,6 +18,7 @@ class UnknownFormatError(ValueError):
 ADAPTERS: tuple[IngestAdapter, ...] = (
     DmsYoloAdapter(),
     DmsCocoAdapter(),
+    DmsInboxRawAdapter(),
     LaneMaskAdapter(),
     LaneLinesAdapter(),
 )
@@ -32,9 +34,15 @@ def detect_adapter(ctx: IngestContext) -> IngestAdapter:
             continue
         if adapter.can_handle(ctx):
             return adapter
+    hint = ""
+    if ctx.project == "dms":
+        hint = (
+            "；DMS 送标/inbox 请使用批次根目录，且至少包含 images/train/*.jpg"
+            "（或已标注的 images/+labels/、COCO annotations/）"
+        )
     raise UnknownFormatError(
         f"unable to detect format for project={ctx.project}, task={ctx.task}, "
-        f"source={ctx.source_path}. supported={available_formats(ctx.project)}"
+        f"source={ctx.source_path}. supported={available_formats(ctx.project)}{hint}"
     )
 
 

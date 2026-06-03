@@ -3,7 +3,6 @@
 **/*.pyc
 **/.pytest_cache
 **/node_modules
-platform/web/dist
 **/runs
 **/log
 **/tmp
