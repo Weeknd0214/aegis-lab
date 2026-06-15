@@ -1,2 +1,0 @@
-/home/chengfanglu/DATA/BK2/archive/yolo26_rknn_ultralytics-main/ultralytics/assets/bus.jpg
-/home/chengfanglu/DATA/BK2/archive/yolo26_rknn_ultralytics-main/ultralytics/assets/zidane.jpg

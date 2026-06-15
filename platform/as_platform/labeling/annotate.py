@@ -1,4 +1,4 @@
-"""标注画布：批次目录、LS 配置 XML、任务列表、标注 JSON、媒体文件。"""
+"""标注数据湖：批次目录、任务列表、标注 JSON、媒体文件（CVAT 为唯一标注引擎）。"""
 from __future__ import annotations
 
 import hashlib
@@ -8,32 +8,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-import yaml
-
-from as_platform.config import WORKSPACE
 from as_platform.data.batch import IMG_EXTS
 from as_platform.data.core import load_wf, proj_root, resolve_pack_dir
 from as_platform.db.engine import session_scope
 from as_platform.db.models import LabelingCampaign, User
-from as_platform.labeling.scope import (
-    enrich_batch_labels,
-    labeling_profile_key,
-    load_dms_registry,
-    load_labeling_registry,
-)
+from as_platform.labeling.scope import enrich_batch_labels, load_dms_registry
 
+# 历史目录名保留，导出脚本仍读取 labels/ls_annotations/
 ANNOTATIONS_DIRNAME = "ls_annotations"
-
-
-def _label_config_dir(project: str) -> Path:
-    return WORKSPACE / "datasets" / project / "configs" / "label_studio"
-
-_FALLBACK_XML = """<View>
-  <Image name="image" value="$image"/>
-  <RectangleLabels name="label" toName="image">
-    <Label value="object"/>
-  </RectangleLabels>
-</View>"""
 
 
 def _load_campaign(campaign_id: str) -> LabelingCampaign | None:
@@ -41,22 +23,12 @@ def _load_campaign(campaign_id: str) -> LabelingCampaign | None:
         return db.get(LabelingCampaign, campaign_id)
 
 
-def resolve_editor_xml(project: str, task: str, mode: str | None) -> str:
-    reg = load_dms_registry() if project == "dms" else None
-    pk = labeling_profile_key(project, task or "lane_v1", mode, reg)
-    prof = (load_labeling_registry().get("profiles") or {}).get(pk) or {}
-    default_tpl = "dam_15cls.xml" if project == "dms" else "lane_ufld_mask.xml"
-    template = prof.get("editor_template") or default_tpl
-    path = _label_config_dir(project) / template
-    if path.is_file():
-        return path.read_text(encoding="utf-8")
-    return _FALLBACK_XML
-
-
 def resolve_campaign_batch_dir(camp: LabelingCampaign) -> Path:
     wf = load_wf()
     root = proj_root(wf, camp.project)
     if camp.project == "dms":
+        import yaml
+
         reg = yaml.safe_load((root / wf["projects"]["dms"]["registry"]).read_text(encoding="utf-8"))
         tcfg = reg["tasks"][camp.task]
         if camp.location == "sources":
@@ -77,6 +49,10 @@ def resolve_campaign_batch_dir(camp: LabelingCampaign) -> Path:
         mode = camp.mode
         if mode:
             return (root / "inbox" / camp.task / mode / camp.batch).resolve()
+        return (root / "inbox" / camp.task / camp.batch).resolve()
+    if camp.project == "adas":
+        if not camp.task:
+            raise ValueError("adas campaign 需要 task")
         return (root / "inbox" / camp.task / camp.batch).resolve()
     if camp.location == "pack" and camp.pack:
         try:
@@ -128,23 +104,13 @@ def _annotations_dir(batch_dir: Path) -> Path:
     return d
 
 
-def sync_campaign_config_xml(camp: LabelingCampaign) -> str:
-    """始终与 labeling.registry + 模板文件对齐，避免 campaign 卡在旧 fallback XML。"""
-    xml = resolve_editor_xml(camp.project, camp.task, camp.mode)
-    if camp.config_xml != xml:
-        camp.config_xml = xml
-    return xml
-
-
 def campaign_bootstrap(campaign_id: str) -> dict[str, Any]:
     with session_scope() as db:
         camp = db.get(LabelingCampaign, campaign_id)
         if not camp:
             raise FileNotFoundError("campaign not found")
-        sync_campaign_config_xml(camp)
         reg = load_dms_registry() if camp.project == "dms" else None
         row = enrich_batch_labels(camp.to_dict(), reg)
-        row["config_xml"] = camp.config_xml
         try:
             batch_dir = resolve_campaign_batch_dir(camp)
             row["batch_path"] = str(batch_dir)
@@ -153,6 +119,9 @@ def campaign_bootstrap(campaign_id: str) -> dict[str, Any]:
             row["batch_path"] = None
             row["image_count"] = 0
             row["batch_error"] = str(e)
+        row["editor"] = "cvat"
+        row["cvat_task_id"] = camp.cvat_task_id
+        row["cvat_job_url"] = camp.cvat_job_url
     return row
 
 
@@ -259,7 +228,7 @@ def save_annotation(
         batch_dir = resolve_campaign_batch_dir(camp)
     path = _annotations_dir(batch_dir) / f"{task_id}.json"
     now = datetime.now(timezone.utc).isoformat()
-    extra: dict[str, Any] = {}
+    extra: dict[str, Any] = {"source": "hsap", "saved_at": now}
     if user:
         extra["completed_by_user_id"] = user.id
         extra["completed_at"] = now

@@ -27,6 +27,7 @@ const MODULES: ModuleDef[] = [
     icon: "📋",
     requiredPerm: "read:pending",
     items: [
+      { to: "/labeling/my-tasks", label: "我的标注", perm: "read:pending" },
       { to: "/labeling/workbench", label: "送标工作台", perm: "read:pending" },
       { to: "/labeling/campaigns", label: "标注进度", perm: "read:pending" },
       { to: "/labeling/review", label: "标注质检", perm: "read:pending" },

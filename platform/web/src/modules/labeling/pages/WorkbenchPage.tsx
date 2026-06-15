@@ -42,8 +42,15 @@ export const WorkbenchPage: React.FC = () => {
   const handleScan = async () => {
     setScanning(true); setError(null);
     try {
-      const dms = await hsapApi.scanInbox("dms");
-      setScanItems((dms.items || []) as unknown as ScanItem[]);
+      const [dms, adas] = await Promise.all([
+        hsapApi.scanInbox("dms"),
+        hsapApi.scanInbox("adas"),
+      ]);
+      const items = [
+        ...((dms.items || []) as unknown as ScanItem[]),
+        ...((adas.items || []) as unknown as ScanItem[]),
+      ];
+      setScanItems(items);
       setShowScan(true);
     } catch (e) { setError(String(e)); }
     setScanning(false);
@@ -170,6 +177,11 @@ export const WorkbenchPage: React.FC = () => {
                     <span className="font-semibold text-sm">{b.batch}</span>
                     <span className="text-xs text-gray-400">{b.project}/{b.task || "—"}</span>
                     <StageBadge stage={b.stage} />
+                    {(b as any).annotation_types?.map((t: string) => (
+                      <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
+                        {{bbox: "2D框", keypoint: "关键点", polyline: "车道线", cuboid: "3D框"}[t] || t}
+                      </span>
+                    ))}
                   </div>
                   <div className="flex gap-3 mt-1 text-xs text-gray-400">
                     <span>🖼 {b.counts?.images ?? 0}</span>
@@ -181,10 +193,10 @@ export const WorkbenchPage: React.FC = () => {
                     <Button size="small" variant="primary" onClick={() => handleOpenCampaign(b)}>开标</Button>
                   )}
                   {b.stage === "out_for_labeling" && b.campaign_id && (
-                    <a href={`/labeling/campaigns/${b.campaign_id}/annotate`} target="_blank" rel="noopener noreferrer"
+                    <Link to={`/labeling/annotate/${b.campaign_id}`}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
                       ✏️ 进入标注
-                    </a>
+                    </Link>
                   )}
                 </div>
               </div>

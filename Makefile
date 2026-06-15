@@ -8,7 +8,7 @@ dev:
 	@echo "Vite: http://127.0.0.1:5173"
 
 down:
-	docker compose --profile dev down
+	docker compose -f docker-compose.yml -f docker-compose.cvat.yml --profile dev down
 
 logs:
 	docker compose logs -f platform worker

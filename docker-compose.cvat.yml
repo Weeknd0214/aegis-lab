@@ -1,0 +1,236 @@
+# HSAP 内置 CVAT 标注引擎（与 platform 同 compose 项目、同网络）
+# 用法: docker compose -f docker-compose.yml -f docker-compose.cvat.yml up -d
+# 补丁源码: vendor/cvat/patches/（no_auth + HSAP iframe 嵌入）
+
+name: hsap
+
+x-cvat-server-volumes: &cvat-server-volumes
+  - cvat_data:/home/django/data
+  - cvat_keys:/home/django/keys
+  - cvat_logs:/home/django/logs
+  - ${AS_WORKSPACE_ROOT:-./.workspace-stub}:/home/django/share/workspace:ro
+  - ./vendor/cvat/patches/base.py:/home/django/cvat/settings/base.py:ro
+  - ./vendor/cvat/patches/no_auth.py:/home/django/cvat/apps/iam/no_auth.py:ro
+  - ./vendor/cvat/patches/no_auth_middleware.py:/home/django/cvat/apps/iam/no_auth_middleware.py:ro
+
+x-cvat-backend-env: &cvat-backend-env
+  CVAT_POSTGRES_HOST: cvat_db
+  CVAT_REDIS_INMEM_HOST: cvat_redis_inmem
+  CVAT_REDIS_INMEM_PORT: 6379
+  CVAT_REDIS_ONDISK_HOST: cvat_redis_ondisk
+  CVAT_REDIS_ONDISK_PORT: 6666
+  CLICKHOUSE_HOST: cvat_clickhouse
+  CLICKHOUSE_PORT: 8123
+  CLICKHOUSE_DB: cvat
+  CLICKHOUSE_USER: user
+  CLICKHOUSE_PASSWORD: user
+  IAM_OPA_URL: http://cvat_opa:8181
+  CVAT_OPA_URL: http://cvat_opa:8181
+  CVAT_ANALYTICS: "0"
+  CVAT_ALLOW_STATIC_CACHE: "no"
+  ALLOWED_HOSTS: "*"
+  SMOKESCREEN_OPTS: ""
+  no_proxy: clickhouse,grafana,vector,opa
+
+services:
+  cvat_db:
+    image: postgres:15-alpine
+    container_name: hsap-cvat-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_DB: cvat
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - cvat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d cvat"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+    networks:
+      - default
+
+  cvat_redis_inmem:
+    image: redis:7.2.11-alpine
+    container_name: hsap-cvat-redis-inmem
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "100", "--appendonly", "yes"]
+    volumes:
+      - cvat_inmem_db:/data
+    networks:
+      - default
+
+  cvat_redis_ondisk:
+    image: apache/kvrocks:2.15.0
+    container_name: hsap-cvat-redis-ondisk
+    restart: unless-stopped
+    init: true
+    volumes:
+      - cvat_cache_db:/var/lib/kvrocks
+    command: ["--compact-cron", "0 3 * * *"]
+    networks:
+      - default
+
+  cvat_clickhouse:
+    image: clickhouse/clickhouse-server:23.11-alpine
+    container_name: hsap-cvat-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: cvat
+      CLICKHOUSE_USER: user
+      CLICKHOUSE_PASSWORD: user
+    volumes:
+      - cvat_clickhouse:/var/lib/clickhouse
+      - cvat_clickhouse_logs:/var/log/clickhouse-server
+    networks:
+      default:
+        aliases:
+          - clickhouse
+
+  cvat_opa:
+    image: openpolicyagent/opa:1.12.2
+    container_name: hsap-cvat-opa
+    restart: unless-stopped
+    command:
+      - run
+      - --server
+      - --addr=:8181
+      - --log-level=error
+      - --set=services.cvat.url=http://cvat-server:8080
+      - --set=bundles.cvat.service=cvat
+      - --set=bundles.cvat.resource=/api/auth/rules
+      - --set=bundles.cvat.polling.min_delay_seconds=5
+      - --set=bundles.cvat.polling.max_delay_seconds=15
+    networks:
+      default:
+        aliases:
+          - opa
+    depends_on:
+      - cvat_server
+
+  cvat_server:
+    image: cvat/server:dev
+    container_name: hsap-cvat-server
+    restart: unless-stopped
+    command: init run server nginx
+    environment:
+      <<: *cvat-backend-env
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.cvat.loadbalancer.server.port=8080
+      - traefik.http.routers.cvat.rule=Host(`localhost`)||Host(`127.0.0.1`)&&(PathPrefix(`/api/`)||PathPrefix(`/static/`)||PathPrefix(`/admin`))
+      - traefik.http.routers.cvat.entrypoints=web
+    volumes: *cvat-server-volumes
+    depends_on:
+      cvat_db:
+        condition: service_healthy
+      cvat_clickhouse:
+        condition: service_started
+    networks:
+      default:
+        aliases:
+          - cvat-server
+
+  cvat_worker_import:
+    image: cvat/server:dev
+    container_name: hsap-cvat-worker-import
+    restart: unless-stopped
+    environment:
+      <<: *cvat-backend-env
+    volumes: *cvat-server-volumes
+    command: run worker import
+    depends_on:
+      - cvat_server
+    networks:
+      - default
+
+  cvat_worker_export:
+    image: cvat/server:dev
+    container_name: hsap-cvat-worker-export
+    restart: unless-stopped
+    environment:
+      <<: *cvat-backend-env
+    volumes: *cvat-server-volumes
+    command: run worker export
+    depends_on:
+      - cvat_server
+    networks:
+      - default
+
+  cvat_worker_annotation:
+    image: cvat/server:dev
+    container_name: hsap-cvat-worker-annotation
+    restart: unless-stopped
+    environment:
+      <<: *cvat-backend-env
+    volumes: *cvat-server-volumes
+    command: run worker annotation
+    depends_on:
+      - cvat_server
+    networks:
+      - default
+
+  cvat_ui:
+    image: cvat/ui:dev
+    container_name: hsap-cvat-ui
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.cvat-ui.loadbalancer.server.port=8000
+      - traefik.http.routers.cvat-ui.rule=Host(`localhost`)||Host(`127.0.0.1`)
+      - traefik.http.routers.cvat-ui.entrypoints=web
+      # HSAP :8787 iframe 嵌入 CVAT :8080（去掉 UI 默认的 X-Frame-Options: deny）
+      - traefik.http.middlewares.cvat-ui-frame.headers.customResponseHeaders.X-Frame-Options=
+      - traefik.http.middlewares.cvat-ui-frame.headers.customResponseHeaders.Content-Security-Policy=frame-ancestors 'self' http://127.0.0.1:8787 http://localhost:8787 http://127.0.0.1:8080 http://localhost:8080
+      - traefik.http.routers.cvat-ui.middlewares=cvat-ui-frame
+    depends_on:
+      - cvat_server
+    networks:
+      - default
+
+  cvat_traefik:
+    image: traefik:v3.6
+    container_name: hsap-cvat-traefik
+    restart: unless-stopped
+    environment:
+      TRAEFIK_ENTRYPOINTS_web_ADDRESS: :8080
+      TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT: "false"
+      TRAEFIK_PROVIDERS_DOCKER_NETWORK: hsap_default
+    ports:
+      - "${CVAT_PORT:-8080}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - cvat_ui
+      - cvat_server
+    networks:
+      - default
+
+  # 让 platform 在 CVAT 网关就绪后再启动（合并 compose 时生效）
+  platform:
+    depends_on:
+      cvat_traefik:
+        condition: service_started
+
+volumes:
+  cvat_pgdata:
+    name: hsap_cvat_pgdata
+    external: true
+  cvat_inmem_db:
+    name: hsap_cvat_inmem_db
+    external: true
+  cvat_cache_db:
+    name: hsap_cvat_cache_db
+    external: true
+  cvat_clickhouse:
+  cvat_clickhouse_logs:
+  cvat_data:
+    name: hsap_cvat_data
+    external: true
+  cvat_keys:
+    name: hsap_cvat_keys
+    external: true
+  cvat_logs:
+    name: hsap_cvat_logs
+    external: true

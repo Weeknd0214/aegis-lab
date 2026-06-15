@@ -288,6 +288,44 @@ select.form-input {
   appearance: auto;
 }
 
+/* ---- Assign quantity slider ---- */
+.assign-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+  cursor: pointer;
+}
+
+.assign-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: grab;
+}
+
+.assign-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: grab;
+}
+
+.assign-range::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .sidebar {

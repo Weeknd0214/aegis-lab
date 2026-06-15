@@ -1,9 +1,0 @@
-<View>
-  <Image name="image" value="$image"/>
-  <RectangleLabels name="label" toName="image">
-    <Label value="face"/>
-    <Label value="eye_open"/>
-    <Label value="nod_eye"/>
-    <Label value="nod_face"/>
-  </RectangleLabels>
-</View>

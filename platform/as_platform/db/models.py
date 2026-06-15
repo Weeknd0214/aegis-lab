@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Table,
     Text,
@@ -534,6 +535,9 @@ class LabelingCampaign(Base):
     assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     assigned_to_name = Column(String(128), nullable=True)
     config_xml = Column(Text, nullable=True)
+    cvat_task_id = Column(Integer, nullable=True, index=True)
+    cvat_job_url = Column(String(512), nullable=True)
+    annotation_types = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -550,6 +554,9 @@ class LabelingCampaign(Base):
             "assigned_to_user_id": self.assigned_to_user_id,
             "assigned_to_name": self.assigned_to_name,
             "config_xml": self.config_xml,
+            "cvat_task_id": self.cvat_task_id,
+            "cvat_job_url": self.cvat_job_url,
+            "annotation_types": self.annotation_types,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -289,6 +289,26 @@ def get_pending_report(wf: dict | None = None) -> dict[str, Any]:
                                 )
                             )
 
+        if pname == "adas":
+            inbox_adas = root / "inbox"
+            if inbox_adas.is_dir():
+                for task_dir in sorted(inbox_adas.iterdir()):
+                    if not task_dir.is_dir() or task_dir.name.startswith("."):
+                        continue
+                    for batch_dir in sorted(task_dir.iterdir()):
+                        if not batch_dir.is_dir() or batch_dir.name.startswith("."):
+                            continue
+                        report["batches"].append(
+                            enrich_batch(
+                                batch_dir,
+                                project="adas",
+                                task=task_dir.name,
+                                pack=None,
+                                batch=batch_dir.name,
+                                location="inbox",
+                            )
+                        )
+
         if pname == "lane":
             proj["packs"] = {}
             for pack_name in all_names:
@@ -1024,6 +1044,10 @@ def register_batch(
             batch_dir = pack_dir / tcfg["task_dir"] / src_sub / batch
         else:
             batch_dir = root / "inbox" / task / batch
+    elif project == "adas":
+        if not task:
+            raise ValueError("adas register-batch 需要 task")
+        batch_dir = root / "inbox" / task / batch
     else:
         if location == "pack" and pack:
             try:
@@ -1057,6 +1081,16 @@ def register_batch(
         }
         if not data["counts"]["images"] and dms_has_images(batch_dir):
             data["counts"]["images"] = 1
+    elif project == "adas":
+        from as_platform.data.batch import count_images, count_label_files, dms_has_images
+
+        data["format"] = "cvat_cuboid"
+        data["counts"] = {
+            "images": count_images(batch_dir),
+            "labels": count_label_files(batch_dir / "labels"),
+        }
+        if not data["counts"]["images"] and dms_has_images(batch_dir):
+            data["counts"]["images"] = count_images(batch_dir / "images")
     else:
         data["format"] = "ufld_archive"
         tg = batch_dir / "list" / "train_gt.txt"

@@ -20,7 +20,10 @@ from as_platform.labeling.lock import acquire_lock, release_lock, renew_lock
 from as_platform.labeling.progress import (
     assign_tasks_even,
     assign_tasks_explicit,
+    assign_tasks_quantized,
+    campaign_my_tasks,
     campaign_progress,
+    list_my_assignments,
     release_task_assignment,
     reassign_task,
     user_is_coordinator,
@@ -41,12 +44,13 @@ router = APIRouter(tags=["labeling"])
 
 
 class OpenCampaignBody(BaseModel):
-    project: str = Field(..., pattern="^(dms|lane)$")
+    project: str = Field(..., pattern="^(dms|lane|adas)$")
     task: str
     batch: str
     mode: str | None = None
     pack: str | None = None
     location: str = "inbox"
+    annotation_types: list[str] | None = None
 
 
 class AssignCampaignBody(BaseModel):
@@ -63,10 +67,16 @@ class AssignTasksExplicitItem(BaseModel):
     task_ids: list[str] = Field(default_factory=list)
 
 
+class AssignTasksQuantizedItem(BaseModel):
+    user_id: int
+    count: int = 0
+
+
 class AssignTasksBody(BaseModel):
     mode: str = "even"
     user_ids: list[int] | None = None
     items: list[AssignTasksExplicitItem] | None = None
+    quantized_items: list[AssignTasksQuantizedItem] | None = None
 
 
 class ReassignTaskBody(BaseModel):
@@ -78,6 +88,24 @@ def api_labeling_assignees(
     _user: Annotated[User, Depends(require_permission("read:pending"))],
 ) -> dict[str, Any]:
     return list_labeling_assignees()
+
+
+@router.get("/api/v1/labeling/my-assignments")
+def api_my_assignments(
+    user: Annotated[User, Depends(require_permission("read:pending"))],
+) -> dict[str, Any]:
+    return list_my_assignments(user.id)
+
+
+@router.get("/api/v1/labeling/campaigns/{campaign_id}/my-tasks")
+def api_campaign_my_tasks(
+    campaign_id: str,
+    user: Annotated[User, Depends(require_permission("read:pending"))],
+) -> dict[str, Any]:
+    try:
+        return campaign_my_tasks(campaign_id, user.id)
+    except FileNotFoundError:
+        raise HTTPException(404, "campaign not found") from None
 
 
 @router.patch("/api/v1/labeling/campaigns/{campaign_id}/assign")
@@ -166,6 +194,9 @@ def api_assign_tasks(
         if body.mode == "explicit":
             items = [{"user_id": i.user_id, "task_ids": i.task_ids} for i in (body.items or [])]
             return assign_tasks_explicit(campaign_id, items, assigned_by_user_id=user.id)
+        if body.mode == "quantized":
+            items = [{"user_id": i.user_id, "count": i.count} for i in (body.quantized_items or [])]
+            return assign_tasks_quantized(campaign_id, items, assigned_by_user_id=user.id)
         if not body.user_ids:
             raise ValueError("even 模式需要 user_ids")
         return assign_tasks_even(campaign_id, body.user_ids, assigned_by_user_id=user.id)
@@ -366,6 +397,37 @@ def api_labeling_lock_renew(
     if not result.get("ok"):
         raise HTTPException(409, detail=result)
     return result
+
+
+# ── CVAT 集成端点 ──
+
+
+@router.get("/api/v1/labeling/cvat/status/{campaign_id}")
+def api_cvat_status(
+    campaign_id: str,
+    _user: Annotated[User, Depends(require_permission("read:pending"))],
+) -> dict[str, Any]:
+    from as_platform.labeling.service import get_cvat_status
+    try:
+        return get_cvat_status(campaign_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "campaign not found") from None
+
+
+@router.post("/api/v1/labeling/cvat/sync/{campaign_id}")
+def api_cvat_sync(
+    campaign_id: str,
+    _user: Annotated[User, Depends(require_permission("read:pending"))],
+) -> dict[str, Any]:
+    from as_platform.labeling.service import sync_cvat_annotations
+    try:
+        return sync_cvat_annotations(campaign_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "campaign not found") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        raise HTTPException(500, f"CVAT 同步失败: {e}") from e
 
 
 # ── 标注质检 (Quality Review) ──

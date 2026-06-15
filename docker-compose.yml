@@ -1,6 +1,7 @@
 # HSAP — Huaxu Sentinel Active Safety Platform
-# 用法: docker compose up -d
-#       docker compose --profile dev up -d   # 含 Vite 热更新
+# 用法:
+#   docker compose up -d                                               # 仅平台
+#   docker compose -f docker-compose.yml -f docker-compose.cvat.yml up -d  # 平台 + CVAT 标注引擎
 
 name: hsap
 
@@ -19,10 +20,15 @@ x-platform-env: &platform-env
   FEISHU_REDIRECT_URI: http://127.0.0.1:8787/api/v1/auth/feishu/callback
   # 容器内 workspace 挂载点（宿主机路径由 compose volumes 的 AS_WORKSPACE_ROOT 决定）
   AS_WORKSPACE_ROOT: /data/workspace
+  AS_DATA_LAKE_ROOT: /data/data
+  # CVAT 标注引擎（合并 docker-compose.cvat.yml 时生效；无需 CVAT 账号）
+  CVAT_HOST: ${CVAT_HOST:-http://hsap-cvat-server:8080}
+  CVAT_PUBLIC_URL: ${CVAT_PUBLIC_URL:-http://127.0.0.1:8080}
 
 x-platform-volumes: &platform-volumes
   - .:/data/hsap
   - ${AS_WORKSPACE_ROOT:-./.workspace-stub}:/data/workspace:ro
+  - ${AS_DATA_LAKE_HOST:-../data}:/data/data
 
 services:
   postgres:
@@ -42,6 +48,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 8
+    networks:
+      default:
+        aliases:
+          - postgres
 
   redis:
     image: redis:7-alpine
@@ -56,6 +66,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 8
+    networks:
+      default:
+        aliases:
+          - redis
 
   platform:
     build:

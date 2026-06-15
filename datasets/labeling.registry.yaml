@@ -1,42 +1,47 @@
 version: 1
+# 标注引擎：统一 CVAT（开标时按 scope 自动生成 labels）
 profiles:
   ddaw:
     scope_key: "dms:ddaw"
-    editor_template: dms_detect.xml
     export_default: yolo
     ml_adapter: dms_yolo
   addw:
     scope_key: "dms:addw"
-    editor_template: dms_detect.xml
     export_default: yolo
     ml_adapter: dms_yolo
   addw_face:
     scope_key: "dms:addw_face"
-    editor_template: dms_pose.xml
     export_default: yolo_pose
     ml_adapter: dms_yolo_pose
   dam__batch_0516:
     scope_key: "dms:dam:batch_0516"
-    editor_template: dam_15cls.xml
     export_default: yolo
     ml_adapter: dms_yolo
   dam__batch_0417:
     scope_key: "dms:dam:batch_0417"
-    editor_template: dam_15cls.xml
     export_default: yolo
     ml_adapter: dms_yolo
   forward__detect:
     scope_key: "dms:forward:detect"
-    editor_template: forward_4cls.xml
     export_default: yolo
     ml_adapter: dms_yolo
   forward__classify:
     scope_key: "dms:forward:classify"
-    editor_template: forward_cls.xml
     export_default: folder_cls
     ml_adapter: dms_yolo_cls
   lane__lane_v1:
     scope_key: "lane:lane_v1"
-    editor_template: lane_ufld_mask.xml
     export_default: lane_gt_txt
     ml_adapter: lane_ufld
+  cuboid_7cls:
+    scope_key: "adas:cuboid_7cls"
+    export_default: cvat_cuboid
+    ml_adapter: adas_yolo26
+    cvat_labels:
+      - car
+      - pedestrian
+      - truck
+      - bus
+      - motorcycle
+      - tricycle
+      - traffic cone

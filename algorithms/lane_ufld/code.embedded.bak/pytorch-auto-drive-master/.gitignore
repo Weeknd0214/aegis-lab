@@ -1,8 +1,0 @@
-# standard
-__pycache__/
-.idea
-.vscode
-
-# custom
-output
-checkpoints

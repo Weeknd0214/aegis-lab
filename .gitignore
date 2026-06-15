@@ -13,6 +13,9 @@ build/
 venv/
 
 # Node / frontend
+node_modules/
+platform/web/tsconfig.tsbuildinfo
+
 # Secrets & local env
 .env
 manifests/feishu.env

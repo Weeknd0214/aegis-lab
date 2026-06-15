@@ -5,6 +5,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from as_platform.config import WORKSPACE
@@ -12,7 +13,7 @@ from as_platform.data.core import get_pending_report, load_wf
 from as_platform.db.engine import session_scope
 from as_platform.db.models import LabelingCampaign, LabelingExportJob, User
 from as_platform.jobs.queue import enqueue_job, get_job
-from as_platform.labeling.annotate import resolve_editor_xml, sync_campaign_config_xml
+from as_platform.labeling.annotate import resolve_campaign_batch_dir, _iter_batch_images
 from as_platform.labeling.batch_stage import (
     on_labeling_export_job_succeeded,
     update_campaign_batch_meta_stage,
@@ -35,6 +36,8 @@ def _parse_scope_key(scope_key: str) -> tuple[str, str, str | None]:
     parts = scope_key.split(":")
     if parts[0] == "lane":
         return "lane", parts[1] if len(parts) > 1 else "lane_v1", None
+    if parts[0] == "adas":
+        return "adas", parts[1] if len(parts) > 1 else "cuboid_7cls", None
     if len(parts) >= 3:
         return "dms", parts[1], parts[2]
     if len(parts) == 2:
@@ -115,6 +118,8 @@ def list_labeling_batches(
     allowed_stages = ("raw_pool", "out_for_labeling", "returned", "labeling_submitted", "in_review", "review_approved", "review_rejected")
 
     def _append(b: dict[str, Any]) -> None:
+        if b.get("registry_only"):
+            return
         if stage and b.get("stage") != stage:
             return
         if b.get("stage") not in allowed_stages:
@@ -169,10 +174,24 @@ def open_campaign(
     mode: str | None = None,
     pack: str | None = None,
     location: str = "inbox",
+    annotation_types: list[str] | None = None,
 ) -> dict[str, Any]:
     cid = _campaign_id(project, task, mode, batch, location)
-    config_xml = resolve_editor_xml(project, task, mode)
     now = datetime.now(timezone.utc)
+    ann_types = annotation_types or _resolve_default_annotation_types(project, task, mode)
+
+    from as_platform.labeling.cvat_client import get_cvat_client
+    from as_platform.labeling.cvat_config import build_cvat_labels
+
+    cvat = get_cvat_client()
+    if not cvat.ping():
+        raise ValueError("CVAT 标注引擎不可用，请执行: docker compose -f docker-compose.yml -f docker-compose.cvat.yml up -d")
+
+    cvat_labels = build_cvat_labels(project, task, mode, ann_types)
+    cvat_task = cvat.create_task(name=cid, labels=cvat_labels)
+    cvat_task_id = cvat_task.id
+    cvat_job_url = cvat_task.job_url
+
     with session_scope() as db:
         camp = db.get(LabelingCampaign, cid)
         if not camp:
@@ -185,7 +204,9 @@ def open_campaign(
                 pack=pack,
                 location=location,
                 status="in_progress",
-                config_xml=config_xml,
+                cvat_task_id=cvat_task_id,
+                cvat_job_url=cvat_job_url,
+                annotation_types=ann_types,
                 created_at=now,
                 updated_at=now,
             )
@@ -193,10 +214,25 @@ def open_campaign(
         else:
             camp.status = "in_progress"
             camp.updated_at = now
-            sync_campaign_config_xml(camp)
+            if cvat_task_id and not camp.cvat_task_id:
+                camp.cvat_task_id = cvat_task_id
+                camp.cvat_job_url = cvat_job_url
+            if ann_types and not camp.annotation_types:
+                camp.annotation_types = ann_types
         db.flush()
         out = camp.to_dict()
-        out["config_xml"] = camp.config_xml
+
+        # CVAT 图片上传（异步，不阻塞）
+        try:
+            batch_dir = resolve_campaign_batch_dir(camp)
+            images = _iter_batch_images(batch_dir)
+            if images:
+                import threading
+                cvat_uploader = _cvat_upload_thread(cvat_task_id, images)
+                threading.Thread(target=cvat_uploader, daemon=True).start()
+        except Exception:
+            pass
+
         update_campaign_batch_meta_stage(camp, "out_for_labeling")
     reg = load_dms_registry() if project == "dms" else None
     row = enrich_batch_labels(out, reg)
@@ -210,7 +246,6 @@ def get_campaign(campaign_id: str) -> dict[str, Any] | None:
         if not camp:
             return None
         row = camp.to_dict()
-        row["config_xml"] = camp.config_xml
     reg = load_dms_registry() if row.get("project") == "dms" else None
     return enrich_batch_labels(row, reg)
 
@@ -285,21 +320,55 @@ def list_campaign_export_jobs(campaign_id: str, *, limit: int = 30) -> dict[str,
 
 
 def list_labeling_assignees() -> dict[str, Any]:
-    """可指派为批次负责人的用户（标注相关角色）。"""
+    """可指派用户：从飞书通讯录同步组织全员，供分配下拉选择。"""
+    from as_platform.auth.feishu import is_feishu_configured, sync_feishu_users_to_db
+
     role_codes = ("labeler", "internal_labeler", "vendor_labeler", "engineer", "admin")
+    sync_meta: dict[str, Any] = {"feishu_configured": is_feishu_configured()}
+    if sync_meta["feishu_configured"]:
+        from as_platform.config import FEISHU_APP_ID
+        sync_meta["contact_scope_url"] = (
+            f"https://open.feishu.cn/app/{FEISHU_APP_ID}/auth"
+            "?q=contact:contact:readonly_as_app,contact:department.organize:readonly,contact:contact.base:readonly"
+            "&op_from=openapi&token_type=tenant"
+        )
+        sync_meta["publish_url"] = f"https://open.feishu.cn/app/{FEISHU_APP_ID}/appPublish"
     with session_scope() as db:
+        if is_feishu_configured():
+            try:
+                sync_result = sync_feishu_users_to_db(db)
+                sync_meta.update(sync_result)
+            except Exception as exc:
+                sync_meta["error"] = str(exc)
         users = (
             db.query(User)
-            .filter(User.is_active.is_(True))
+            .filter(User.is_active.is_(True), User.feishu_open_id.isnot(None))
             .order_by(User.name)
             .all()
         )
+        if not users:
+            users = (
+                db.query(User)
+                .filter(User.is_active.is_(True))
+                .order_by(User.name)
+                .all()
+            )
+            users = [
+                u for u in users
+                if {r.code for r in (u.roles or [])}.intersection(role_codes)
+            ]
+            sync_meta["fallback"] = "local_roles"
         items = []
         for u in users:
-            codes = {r.code for r in (u.roles or [])}
-            if codes.intersection(role_codes):
-                items.append({"id": u.id, "name": u.name or f"user-{u.id}", "roles": sorted(codes)})
-    return {"items": items}
+            items.append({
+                "id": u.id,
+                "name": u.name or f"user-{u.id}",
+                "avatar_url": u.avatar_url,
+                "roles": sorted({r.code for r in (u.roles or [])}),
+                "department_names": u.feishu_department_ids(),
+                "feishu_open_id": u.feishu_open_id,
+            })
+    return {"items": items, "sync": sync_meta}
 
 
 def _find_batch_for_campaign_id(campaign_id: str) -> dict[str, Any] | None:
@@ -399,3 +468,148 @@ def trigger_labeling_export(campaign_id: str) -> dict[str, Any]:
     )
     ej = _record_export_job(campaign_id, "labeling_export", job)
     return {"ok": True, "job": job, "export_job": ej, "export_default": row.get("export_default")}
+
+
+# ═══════════════════════════════════════════════════════
+# CVAT 集成辅助
+# ═══════════════════════════════════════════════════════
+
+def _resolve_default_annotation_types(project: str, task: str | None, mode: str | None) -> list[str]:
+    """根据 project 推断默认标注类型。"""
+    from as_platform.labeling.cvat_config import resolve_annotation_types
+    return resolve_annotation_types(project, task, mode)
+
+
+def _cvat_upload_thread(cvat_task_id: int, image_paths: list):
+    """在线程中上传图片到 CVAT。"""
+    def _run():
+        try:
+            from as_platform.labeling.cvat_client import get_cvat_client
+            cvat = get_cvat_client()
+            cvat.upload_images(cvat_task_id, image_paths)
+        except Exception:
+            pass
+    return _run
+
+
+def sync_cvat_annotations(campaign_id: str) -> dict[str, Any]:
+    """从 CVAT Job 拉取标注，写入 HSAP 数据湖 labels/ls_annotations。"""
+    from datetime import datetime, timezone
+
+    from as_platform.labeling.annotate import _annotations_dir, _iter_batch_images, _task_id_for_image
+    from as_platform.labeling.cvat_client import get_cvat_client
+    from as_platform.labeling.format_converter import (
+        cvat_job_shapes_to_yolo_lines,
+        cvat_shapes_to_export_regions,
+        group_cvat_job_shapes_by_frame,
+    )
+
+    with session_scope() as db:
+        camp = db.get(LabelingCampaign, campaign_id)
+        if not camp:
+            raise FileNotFoundError("campaign not found")
+        if not camp.cvat_task_id:
+            raise ValueError("该 campaign 未关联 CVAT Task")
+
+        cvat = get_cvat_client()
+        task = cvat.get_task(camp.cvat_task_id)
+        if not task.job_id:
+            raise ValueError("CVAT Job 尚未就绪，请等待图片上传完成")
+
+        job_id = task.job_id
+        job_ann = cvat.get_job_annotations(job_id)
+        meta = cvat.get_job_data_meta(job_id)
+        label_map = cvat.get_job_label_map(job_id)
+        frames = meta.get("frames") or []
+        shapes_by_frame = group_cvat_job_shapes_by_frame(job_ann)
+
+        batch_dir = resolve_campaign_batch_dir(camp)
+        images = _iter_batch_images(batch_dir)
+        name_to_path = {p.name: p for p in images}
+        ann_dir = _annotations_dir(batch_dir)
+        synced_at = datetime.now(timezone.utc).isoformat()
+
+        from as_platform.labeling.scope import load_dms_registry
+
+        reg = load_dms_registry() if camp.project == "dms" else None
+        class_map = _build_class_map(camp, reg)
+
+        saved_count = 0
+        shape_count = 0
+        for frame_idx, shapes in shapes_by_frame.items():
+            if frame_idx >= len(frames):
+                continue
+            frame_name = frames[frame_idx].get("name") or f"frame_{frame_idx}"
+            img_path = name_to_path.get(Path(frame_name).name)
+            if not img_path:
+                continue
+
+            task_id = _task_id_for_image(img_path, batch_dir)
+            fw = int(frames[frame_idx].get("width") or 1920)
+            fh = int(frames[frame_idx].get("height") or 1080)
+            result_items = cvat_shapes_to_export_regions(shapes, label_map, fw, fh)
+            shape_count += len(result_items)
+
+            payload: dict[str, Any] = {
+                "task_id": task_id,
+                "result": result_items,
+                "source": "cvat",
+                "synced_at": synced_at,
+                "cvat_job_id": job_id,
+                "image": frame_name,
+            }
+            ann_file = ann_dir / f"{task_id}.json"
+            ann_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            saved_count += 1
+
+            # DMS / ADAS 2D：额外写 YOLO txt 供训练导出
+            if camp.project in ("dms", "adas") and class_map:
+                yolo_lines = cvat_job_shapes_to_yolo_lines(shapes, label_map, class_map, fw, fh)
+                if yolo_lines:
+                    yolo_dir = batch_dir / "labels" / "yolo"
+                    yolo_dir.mkdir(parents=True, exist_ok=True)
+                    stem = Path(frame_name).stem
+                    (yolo_dir / f"{stem}.txt").write_text("\n".join(yolo_lines) + "\n", encoding="utf-8")
+
+        return {
+            "ok": True,
+            "saved": saved_count,
+            "shapes": shape_count,
+            "campaign_id": campaign_id,
+            "cvat_job_id": job_id,
+        }
+
+
+def _build_class_map(camp, reg: dict | None) -> dict[str, int]:
+    """从 DMS registry 构建 class_name → class_id 映射。"""
+    if reg:
+        tasks = reg.get("tasks") or {}
+        tcfg = tasks.get(camp.task) or {}
+        names = tcfg.get("names") or []
+        if isinstance(names, list):
+            return {n: i for i, n in enumerate(names)}
+    return {}
+
+
+def get_cvat_status(campaign_id: str) -> dict[str, Any]:
+    """查询 CVAT 侧 Task 状态。"""
+    with session_scope() as db:
+        camp = db.get(LabelingCampaign, campaign_id)
+        if not camp:
+            raise FileNotFoundError("campaign not found")
+        if not camp.cvat_task_id:
+            return {"cvat_available": False, "campaign_id": campaign_id}
+
+        from as_platform.labeling.cvat_client import get_cvat_client
+        cvat = get_cvat_client()
+        try:
+            task = cvat.get_task(camp.cvat_task_id)
+            return {
+                "cvat_available": True,
+                "campaign_id": campaign_id,
+                "cvat_task_id": camp.cvat_task_id,
+                "cvat_job_url": task.job_url or camp.cvat_job_url,
+                "cvat_status": task.status,
+            }
+        except Exception as e:
+            return {"cvat_available": False, "campaign_id": campaign_id, "error": str(e)}

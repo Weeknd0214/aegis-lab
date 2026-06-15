@@ -89,10 +89,50 @@ export const hsapApi = {
     postJson(`${API_BASE}/api/v1/labeling/campaigns/open`, body),
 
   labelingAssignees: () =>
-    fetchJson<{ items: { id: number; name: string; roles: string[] }[] }>(`${API_BASE}/api/v1/labeling/assignees`),
+    fetchJson<{
+      items: { id: number; name: string; roles: string[]; department_names?: string[]; avatar_url?: string; feishu_open_id?: string }[];
+      sync?: { feishu_configured?: boolean; total?: number; error?: string; fallback?: string; contact_scope_url?: string };
+    }>(`${API_BASE}/api/v1/labeling/assignees`),
+
+  myAssignments: () =>
+    fetchJson<{
+      items: {
+        campaign_id: string;
+        batch: string;
+        task: string;
+        project?: string;
+        assigned: number;
+        completed: number;
+        pending: number;
+        campaign_total?: number;
+        annotate_url?: string;
+      }[];
+      total_pending: number;
+    }>(`${API_BASE}/api/v1/labeling/my-assignments`),
+
+  campaignMyTasks: (campaignId: string) =>
+    fetchJson<{
+      campaign_id: string;
+      items: {
+        task_id: string;
+        filename: string;
+        relative_path: string;
+        completed: boolean;
+        frame_index: number;
+      }[];
+      assigned: number;
+      completed: number;
+      pending: number;
+    }>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/my-tasks`),
 
   assignLabelingCampaign: (campaignId: string, userId: number | null) =>
     patchJson(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/assign`, { user_id: userId }),
+
+  assignTasksQuantized: (campaignId: string, items: { user_id: number; count: number }[]) =>
+    postJson(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/assign-tasks`, {
+      mode: "quantized",
+      quantized_items: items,
+    }),
 
   getLabelingCampaign: (id: string) =>
     fetchJson<LabelingBatchRow & { config_xml?: string }>(`${API_BASE}/api/v1/labeling/campaigns/${id}`),

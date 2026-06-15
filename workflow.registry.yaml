@@ -11,6 +11,7 @@ platform:
       dms_inbox: "datasets/dms/inbox/{task}/{batch}"
       dms_sources: "datasets/dms/packs/{pack}/{task}/sources/{batch}"
       lane_inbox: "datasets/lane/inbox/{batch}"
+      adas_inbox: "data/送标/adas/inbox/{task}/{batch}"
   training:
     tracks:
       local_allowed: true
@@ -48,3 +49,9 @@ projects:
     train:
       workdir: algorithms/lane_ufld/code/UFLD
       config: configs/mufld_lane_multi_pack.py
+
+  adas:
+    root: datasets/adas
+    # 数据湖：宿主机 DATA/data/送标/adas → inbox/{task}/{batch}/images/
+    registry: adas.registry.yaml
+    active_packs: []

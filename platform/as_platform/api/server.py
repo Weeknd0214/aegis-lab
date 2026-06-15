@@ -708,18 +708,14 @@ def api_scan_inbox(
             if batch_name in registered:
                 continue  # 已登记
 
-            # Count images
-            img_count = 0
-            lbl_count = 0
-            has_labels = False
-            for ext in ["*.jpg", "*.jpeg", "*.png", "*.bmp"]:
-                for _ in batch_dir.glob(ext):
-                    img_count += 1
-            if (batch_dir / "labels").is_dir():
-                has_labels = True
-                for ext in ["*.txt", "*.json"]:
-                    for _ in (batch_dir / "labels").glob(ext):
-                        lbl_count += 1
+            # Count images (含 images/ 子目录)
+            from as_platform.data.batch import count_images, count_label_files, dms_has_labels
+
+            img_count = count_images(batch_dir)
+            if not img_count and (batch_dir / "images").is_dir():
+                img_count = count_images(batch_dir / "images")
+            lbl_count = count_label_files(batch_dir / "labels") if (batch_dir / "labels").is_dir() else 0
+            has_labels = lbl_count > 0 or dms_has_labels(batch_dir)
 
             items.append({
                 "project": project,
@@ -879,9 +875,6 @@ def _mount_ui() -> None:
         assets = ui / "assets"
         if assets.is_dir():
             app.mount("/assets", StaticFiles(directory=str(assets)), name="ui-assets")
-        annotate = ui / "annotate"
-        if annotate.is_dir():
-            app.mount("/annotate", StaticFiles(directory=str(annotate), html=True), name="ui-annotate")
         return
 
 
@@ -889,14 +882,10 @@ _mount_ui()
 
 
 @app.get("/labeling/campaigns/{campaign_id}/annotate", include_in_schema=False)
-def serve_annotate_app(campaign_id: str):
-    """标注编辑器页面 — 返回旧 Label Studio 构建产物"""
-    if not _UI_DIR:
-        raise HTTPException(404, "UI not built")
-    annotate_index = _UI_DIR / "annotate" / "index.html"
-    if annotate_index.is_file():
-        return FileResponse(annotate_index)
-    raise HTTPException(404, "标注编辑器未构建")
+def serve_annotate_app_redirect(campaign_id: str):
+    """标注编辑器 — 已迁移至 CVAT，302 重定向到新路由"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(f"/labeling/annotate/{campaign_id}", status_code=302)
 
 
 @app.get("/{full_path:path}", include_in_schema=False)

@@ -11,6 +11,8 @@ DOMAIN_LABELS = {"dms": "舱内 DMS", "forward": "前向 ADAS"}
 
 
 def format_scope_key(project: str, task: str, mode: str | None = None) -> str:
+    if project == "adas":
+        return f"adas:{task}"
     if project == "lane":
         return f"lane:{task}"
     if mode:
@@ -41,6 +43,8 @@ def load_labeling_registry() -> dict[str, Any]:
 
 
 def labeling_profile_key(project: str, task: str, mode: str | None, reg: dict | None = None) -> str:
+    if project == "adas":
+        return task
     if project == "lane":
         return f"lane__{task}"
     get_mode_config, resolve_task_id, train_yaml_key = _dms_registry_api()
@@ -71,6 +75,10 @@ def enrich_batch_labels(batch: dict[str, Any], reg: dict | None = None) -> dict[
         except Exception:
             out["domain"] = "dms"
             out["domain_label"] = DOMAIN_LABELS["dms"]
+    elif project == "adas":
+        out["domain"] = "adas"
+        out["domain_label"] = "前向 ADAS"
+        out["task_label"] = task
     else:
         out["domain_label"] = "车道线 Lane"
         out["task_label"] = task

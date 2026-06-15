@@ -10,3 +10,7 @@ manifests/platform.db
 *.md
 .env
 manifests/feishu.env
+# 大文件数据包由 volume 挂载，不打进镜像
+datasets/dms/packs/**
+datasets/dms/inbox/**
+datasets/lane/**
