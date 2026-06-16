@@ -128,10 +128,40 @@ def api_assign_campaign(
 def api_labeling_batches(
     _user: Annotated[User, Depends(require_permission("read:pending"))],
     stage: str | None = Query(None),
+    stages: str | None = Query(None, description="逗号分隔多阶段，一次扫描返回"),
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    refresh: bool = Query(False, description="true 时先重建索引再返回"),
+    q: str | None = Query(None, description="搜索批次名/任务/项目"),
 ) -> dict[str, Any]:
-    return list_labeling_batches(stage=stage, offset=offset, limit=limit)
+    stage_list = [s.strip() for s in stages.split(",")] if stages else None
+    return list_labeling_batches(
+        stage=stage, stages=stage_list, offset=offset, limit=limit, refresh=refresh, q=q,
+    )
+
+
+@router.post("/api/v1/labeling/batches/rebuild-index")
+def api_rebuild_batch_index(
+    _user: Annotated[User, Depends(require_permission("write:labeling_assign"))],
+) -> dict[str, Any]:
+    from as_platform.labeling.batch_index import rebuild_batch_index
+
+    return rebuild_batch_index()
+
+
+@router.post("/api/v1/labeling/batches/{campaign_id}/archive")
+def api_archive_batch(
+    campaign_id: str,
+    _user: Annotated[User, Depends(require_permission("write:labeling_assign"))],
+) -> dict[str, Any]:
+    from as_platform.labeling.batch_index import archive_batch
+
+    try:
+        return archive_batch(campaign_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "batch not found") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @router.post("/api/v1/labeling/campaigns/open")
@@ -488,23 +518,7 @@ def api_review_image(
     from as_platform.audit.review import get_review_image
     import tempfile
     try:
-        # Get class names from registry
-        import yaml
-        from as_platform.data.core import load_wf, proj_root
-        wf = load_wf()
-        root = proj_root(wf, "dms")
-        reg = yaml.safe_load((root / wf["projects"]["dms"]["registry"]).read_text())
-        # Build class_names dict from campaign scope
-        class_names: dict[int, str] = {}
-        # Try to get from the specific task
-        tasks = reg.get("tasks", {})
-        for task_cfg in tasks.values():
-            names = task_cfg.get("names")
-            if isinstance(names, list):
-                for i, n in enumerate(names):
-                    class_names[i] = n
-
-        data = get_review_image(campaign_id, path, class_names)
+        data = get_review_image(campaign_id, path)
         tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
         tmp.write(data)
         tmp.close()
@@ -528,6 +542,16 @@ def api_review_submit(
 def api_review_progress(
     campaign_id: str,
     _user: Annotated[User, Depends(require_permission("read:pending"))],
-) -> dict[str, int]:
+) -> dict[str, Any]:
     from as_platform.audit.review import review_progress
     return review_progress(campaign_id)
+
+
+@router.get("/api/v1/labeling/review-progress")
+def api_review_progress_batch(
+    _user: Annotated[User, Depends(require_permission("read:pending"))],
+    campaign_ids: str = Query(..., description="逗号分隔 campaign id，最多 50 个"),
+) -> dict[str, Any]:
+    from as_platform.audit.review import review_progress_batch
+    ids = [x.strip() for x in campaign_ids.split(",") if x.strip()]
+    return review_progress_batch(ids)

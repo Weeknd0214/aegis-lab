@@ -1,9 +1,12 @@
-# HSAP — Huaxu Sentinel Active Safety Platform
+# aegis-lab — 平台 + CVAT 标注引擎（单文件 compose）
 # 用法:
-#   docker compose up -d                                               # 仅平台
-#   docker compose -f docker-compose.yml -f docker-compose.cvat.yml up -d  # 平台 + CVAT 标注引擎
+#   docker compose up -d --build          # 本地构建
+#   docker compose pull && docker compose up -d   # 使用 GHCR 预构建镜像
+#
+# 镜像: ghcr.io/weeknd0214/aegis-lab-platform / aegis-lab-cvat-server
+# 推送: bash scripts/docker_push.sh
 
-name: hsap
+name: aegis-lab
 
 x-platform-env: &platform-env
   AS_DB_HOST: postgres
@@ -16,33 +19,63 @@ x-platform-env: &platform-env
   AS_DEV_AUTH: "true"
   AS_FORCE_DEV_AUTH: "true"
   AS_JWT_SECRET: dev-docker-secret
-  AS_FRONTEND_URL: http://127.0.0.1:8787
-  FEISHU_REDIRECT_URI: http://127.0.0.1:8787/api/v1/auth/feishu/callback
-  # 容器内 workspace 挂载点（宿主机路径由 compose volumes 的 AS_WORKSPACE_ROOT 决定）
+  AS_FRONTEND_URL: http://127.0.0.1:8788
+  FEISHU_REDIRECT_URI: http://127.0.0.1:8788/api/v1/auth/feishu/callback
   AS_WORKSPACE_ROOT: /data/workspace
   AS_DATA_LAKE_ROOT: /data/data
-  # CVAT 标注引擎（合并 docker-compose.cvat.yml 时生效；无需 CVAT 账号）
-  CVAT_HOST: ${CVAT_HOST:-http://hsap-cvat-server:8080}
-  CVAT_PUBLIC_URL: ${CVAT_PUBLIC_URL:-http://127.0.0.1:8080}
+  CVAT_HOST: ${CVAT_HOST:-http://aegis-lab-cvat-server:8080}
+  CVAT_PUBLIC_URL: ${CVAT_PUBLIC_URL:-http://127.0.0.1:8081}
 
 x-platform-volumes: &platform-volumes
   - .:/data/hsap
   - ${AS_WORKSPACE_ROOT:-./.workspace-stub}:/data/workspace:ro
   - ${AS_DATA_LAKE_HOST:-../data}:/data/data
 
+x-cvat-server-image: &cvat-server-image
+  image: ${AEGIS_CVAT_IMAGE:-ghcr.io/weeknd0214/aegis-lab-cvat-server:${AEGIS_IMAGE_TAG:-latest}}
+  build:
+    context: .
+    dockerfile: docker/cvat-server/Dockerfile
+
+x-cvat-server-volumes: &cvat-server-volumes
+  - cvat_data:/home/django/data
+  - cvat_keys:/home/django/keys
+  - cvat_logs:/home/django/logs
+  - ${AS_WORKSPACE_ROOT:-./.workspace-stub}:/home/django/share/workspace:ro
+
+x-cvat-backend-env: &cvat-backend-env
+  CVAT_POSTGRES_HOST: cvat_db
+  CVAT_REDIS_INMEM_HOST: cvat_redis_inmem
+  CVAT_REDIS_INMEM_PORT: 6379
+  CVAT_REDIS_ONDISK_HOST: cvat_redis_ondisk
+  CVAT_REDIS_ONDISK_PORT: 6666
+  CLICKHOUSE_HOST: cvat_clickhouse
+  CLICKHOUSE_PORT: 8123
+  CLICKHOUSE_DB: cvat
+  CLICKHOUSE_USER: user
+  CLICKHOUSE_PASSWORD: user
+  IAM_OPA_URL: http://cvat_opa:8181
+  CVAT_OPA_URL: http://cvat_opa:8181
+  CVAT_ANALYTICS: "0"
+  CVAT_ALLOW_STATIC_CACHE: "no"
+  ALLOWED_HOSTS: "*"
+  SMOKESCREEN_OPTS: ""
+  no_proxy: clickhouse,grafana,vector,opa
+
 services:
+  # ── Platform stack ─────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: hsap-postgres
+    container_name: aegis-lab-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: as_platform
       POSTGRES_PASSWORD: as_platform
       POSTGRES_DB: as_platform
     ports:
-      - "${AS_DB_PORT:-5432}:5432"
+      - "${AS_DB_PORT:-5433}:5432"
     volumes:
-      - hsap_pgdata:/var/lib/postgresql/data
+      - aegis_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U as_platform -d as_platform"]
       interval: 5s
@@ -55,12 +88,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: hsap-redis
+    container_name: aegis-lab-redis
     restart: unless-stopped
     ports:
-      - "${AS_REDIS_PORT:-6379}:6379"
+      - "${AS_REDIS_PORT:-6380}:6379"
     volumes:
-      - hsap_redis:/data
+      - aegis_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -72,15 +105,16 @@ services:
           - redis
 
   platform:
+    image: ${AEGIS_PLATFORM_IMAGE:-ghcr.io/weeknd0214/aegis-lab-platform:${AEGIS_IMAGE_TAG:-latest}}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: hsap-platform
+    container_name: aegis-lab-platform
     restart: unless-stopped
     env_file:
       - manifests/feishu.env
     ports:
-      - "${AS_PLATFORM_PORT:-8787}:8787"
+      - "${AS_PLATFORM_PORT:-8788}:8787"
     environment:
       <<: *platform-env
     volumes: *platform-volumes
@@ -89,12 +123,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      cvat_traefik:
+        condition: service_started
 
   worker:
+    image: ${AEGIS_PLATFORM_IMAGE:-ghcr.io/weeknd0214/aegis-lab-platform:${AEGIS_IMAGE_TAG:-latest}}
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: hsap-worker
+    container_name: aegis-lab-worker
     restart: unless-stopped
     env_file:
       - manifests/feishu.env
@@ -110,10 +147,9 @@ services:
       redis:
         condition: service_healthy
 
-  # 可选：S3 兼容暂存（联调）— docker compose --profile minio up -d
   minio:
     image: minio/minio:latest
-    container_name: hsap-minio
+    container_name: aegis-lab-minio
     profiles: ["minio"]
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -124,7 +160,7 @@ services:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - hsap_minio_data:/data
+      - aegis_minio_data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
       interval: 15s
@@ -134,7 +170,7 @@ services:
 
   minio-init:
     image: minio/mc:latest
-    container_name: hsap-minio-init
+    container_name: aegis-lab-minio-init
     profiles: ["minio"]
     depends_on:
       minio:
@@ -142,7 +178,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin_change_me}
-      MINIO_BUCKET: ${MINIO_BUCKET:-hsap-staging}
+      MINIO_BUCKET: ${MINIO_BUCKET:-aegis-staging}
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
@@ -151,7 +187,173 @@ services:
       "
     restart: "no"
 
+  # ── CVAT stack（补丁在 vendor/cvat/patches/，已打入 aegis-lab-cvat-server 镜像）──
+  cvat_db:
+    image: postgres:15-alpine
+    container_name: aegis-lab-cvat-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_DB: cvat
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - cvat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d cvat"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+
+  cvat_redis_inmem:
+    image: redis:7.2.11-alpine
+    container_name: aegis-lab-cvat-redis-inmem
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "100", "--appendonly", "yes"]
+    volumes:
+      - cvat_inmem_db:/data
+
+  cvat_redis_ondisk:
+    image: apache/kvrocks:2.15.0
+    container_name: aegis-lab-cvat-redis-ondisk
+    restart: unless-stopped
+    init: true
+    volumes:
+      - cvat_cache_db:/var/lib/kvrocks
+    command: ["--compact-cron", "0 3 * * *"]
+
+  cvat_clickhouse:
+    image: clickhouse/clickhouse-server:23.11-alpine
+    container_name: aegis-lab-cvat-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: cvat
+      CLICKHOUSE_USER: user
+      CLICKHOUSE_PASSWORD: user
+    volumes:
+      - cvat_clickhouse:/var/lib/clickhouse
+      - cvat_clickhouse_logs:/var/log/clickhouse-server
+    networks:
+      default:
+        aliases:
+          - clickhouse
+
+  cvat_server:
+    <<: *cvat-server-image
+    container_name: aegis-lab-cvat-server
+    restart: unless-stopped
+    command: init run server nginx
+    environment:
+      <<: *cvat-backend-env
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.cvat.loadbalancer.server.port=8080
+      - traefik.http.routers.cvat.rule=Host(`localhost`)||Host(`127.0.0.1`)&&(PathPrefix(`/api/`)||PathPrefix(`/static/`)||PathPrefix(`/admin`))
+      - traefik.http.routers.cvat.entrypoints=web
+    volumes: *cvat-server-volumes
+    depends_on:
+      cvat_db:
+        condition: service_healthy
+      cvat_clickhouse:
+        condition: service_started
+    networks:
+      default:
+        aliases:
+          - cvat-server
+
+  cvat_opa:
+    image: openpolicyagent/opa:1.12.2
+    container_name: aegis-lab-cvat-opa
+    restart: unless-stopped
+    command:
+      - run
+      - --server
+      - --addr=:8181
+      - --log-level=error
+      - --set=services.cvat.url=http://cvat-server:8080
+      - --set=bundles.cvat.service=cvat
+      - --set=bundles.cvat.resource=/api/auth/rules
+      - --set=bundles.cvat.polling.min_delay_seconds=5
+      - --set=bundles.cvat.polling.max_delay_seconds=15
+    networks:
+      default:
+        aliases:
+          - opa
+    depends_on:
+      - cvat_server
+
+  cvat_worker_import:
+    <<: *cvat-server-image
+    container_name: aegis-lab-cvat-worker-import
+    restart: unless-stopped
+    environment:
+      <<: *cvat-backend-env
+    volumes: *cvat-server-volumes
+    command: run worker import
+    depends_on:
+      - cvat_server
+
+  cvat_worker_export:
+    <<: *cvat-server-image
+    container_name: aegis-lab-cvat-worker-export
+    restart: unless-stopped
+    environment:
+      <<: *cvat-backend-env
+    volumes: *cvat-server-volumes
+    command: run worker export
+    depends_on:
+      - cvat_server
+
+  cvat_worker_annotation:
+    <<: *cvat-server-image
+    container_name: aegis-lab-cvat-worker-annotation
+    restart: unless-stopped
+    environment:
+      <<: *cvat-backend-env
+    volumes: *cvat-server-volumes
+    command: run worker annotation
+    depends_on:
+      - cvat_server
+
+  cvat_ui:
+    image: cvat/ui:dev
+    container_name: aegis-lab-cvat-ui
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.cvat-ui.loadbalancer.server.port=8000
+      - traefik.http.routers.cvat-ui.rule=Host(`localhost`)||Host(`127.0.0.1`)
+      - traefik.http.routers.cvat-ui.entrypoints=web
+      - traefik.http.middlewares.cvat-ui-frame.headers.customResponseHeaders.X-Frame-Options=
+      - traefik.http.middlewares.cvat-ui-frame.headers.customResponseHeaders.Content-Security-Policy=frame-ancestors 'self' http://127.0.0.1:8788 http://localhost:8788 http://127.0.0.1:8081 http://localhost:8081
+      - traefik.http.routers.cvat-ui.middlewares=cvat-ui-frame
+    depends_on:
+      - cvat_server
+
+  cvat_traefik:
+    image: traefik:v3.6
+    container_name: aegis-lab-cvat-traefik
+    restart: unless-stopped
+    environment:
+      TRAEFIK_ENTRYPOINTS_web_ADDRESS: :8080
+      TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT: "false"
+      TRAEFIK_PROVIDERS_DOCKER_NETWORK: aegis-lab_default
+    ports:
+      - "${CVAT_PORT:-8081}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - cvat_ui
+      - cvat_server
+
 volumes:
-  hsap_pgdata:
-  hsap_redis:
-  hsap_minio_data:
+  aegis_pgdata:
+  aegis_redis:
+  aegis_minio_data:
+  cvat_pgdata:
+  cvat_inmem_db:
+  cvat_cache_db:
+  cvat_clickhouse:
+  cvat_clickhouse_logs:
+  cvat_data:
+  cvat_keys:
+  cvat_logs:

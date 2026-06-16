@@ -370,11 +370,11 @@ def append_log(root: Path, record: dict) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def run_refresh(root: Path) -> None:
-    subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / "refresh_yaml.py"), "--root", str(root)],
-        check=True,
-    )
+def run_refresh(root: Path, task: str | None = None) -> None:
+    cmd = [sys.executable, str(SCRIPT_DIR / "refresh_yaml.py"), "--root", str(root)]
+    if task:
+        cmd.extend(["--task", task])
+    subprocess.run(cmd, check=True)
 
 
 def ingest_one(
@@ -588,7 +588,7 @@ def promote_inbox_batch(
     if not dry_run:
         append_log(root.resolve(), {"src": str(src), "pack": pack, **result})
         if refresh:
-            run_refresh(root.resolve())
+            run_refresh(root.resolve(), task=task)
     return result
 
 

@@ -76,14 +76,34 @@ export const hsapApi = {
   health: () => fetchJson<{ status: string; database: string }>(`${API_BASE}/api/v1/health`),
 
   // ── Labeling ──
-  labelingBatches: (opts?: { stage?: string; offset?: number; limit?: number }) => {
+  labelingBatches: (opts?: {
+    stage?: string;
+    stages?: string[];
+    offset?: number;
+    limit?: number;
+    refresh?: boolean;
+    q?: string;
+  }) => {
     const p = new URLSearchParams();
-    if (opts?.stage) p.set("stage", opts.stage);
+    if (opts?.stages?.length) p.set("stages", opts.stages.join(","));
+    else if (opts?.stage) p.set("stage", opts.stage);
     if (opts?.offset != null) p.set("offset", String(opts.offset));
     if (opts?.limit != null) p.set("limit", String(opts.limit));
-    const q = p.toString();
-    return fetchJson<PagedResult<LabelingBatchRow>>(`${API_BASE}/api/v1/labeling/batches${q ? `?${q}` : ""}`);
+    if (opts?.refresh) p.set("refresh", "true");
+    if (opts?.q) p.set("q", opts.q);
+    const qs = p.toString();
+    return fetchJson<PagedResult<LabelingBatchRow> & { source?: string; updated_at?: string }>(
+      `${API_BASE}/api/v1/labeling/batches${qs ? `?${qs}` : ""}`,
+    );
   },
+
+  rebuildBatchIndex: () =>
+    postJson<{ ok: boolean; count: number; elapsed_ms: number }>(`${API_BASE}/api/v1/labeling/batches/rebuild-index`),
+
+  archiveLabelingBatch: (campaignId: string) =>
+    postJson<{ ok: boolean; campaign_id: string }>(
+      `${API_BASE}/api/v1/labeling/batches/${encodeURIComponent(campaignId)}/archive`,
+    ),
 
   openLabelingCampaign: (body: { project: string; task: string; batch: string; mode?: string | null; pack?: string | null; location?: string }) =>
     postJson(`${API_BASE}/api/v1/labeling/campaigns/open`, body),
@@ -164,6 +184,46 @@ export const hsapApi = {
 
   labelingExportStats: (campaignId: string) =>
     fetchJson<Record<string, unknown>>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/export-stats`),
+
+  fetchReviewImageBlob: async (campaignId: string, imagePath: string) => {
+    const q = new URLSearchParams({ path: imagePath });
+    const res = await fetch(
+      `${API_BASE}/api/v1/labeling/campaigns/${campaignId}/review-image?${q}`,
+      { headers: authHeaders(), cache: "no-store" },
+    );
+    if (!res.ok) throw new Error(await res.text());
+    return URL.createObjectURL(await res.blob());
+  },
+
+  reviewProgress: (campaignId: string) =>
+    fetchJson<{
+      good: number; fine: number; bad: number; pending: number;
+      total: number; reviewed: number; pass_rate: number; complete: boolean; stage?: string;
+    }>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/review-progress`),
+
+  reviewProgressBatch: (campaignIds: string[]) =>
+    fetchJson<{ items: Record<string, {
+      good: number; fine: number; bad: number; pending: number;
+      total: number; reviewed: number; pass_rate: number; complete: boolean; stage?: string;
+    }> }>(`${API_BASE}/api/v1/labeling/review-progress?campaign_ids=${encodeURIComponent(campaignIds.join(","))}`),
+
+  reviewQueue: (campaignId: string, opts?: { offset?: number; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (opts?.offset != null) p.set("offset", String(opts.offset));
+    if (opts?.limit != null) p.set("limit", String(opts.limit));
+    const q = p.toString();
+    return fetchJson<{
+      items: { id: string; image_path: string; fileName: string; score: string; has_label: boolean }[];
+      total: number;
+      scores: { good: number; fine: number; bad: number; pending: number };
+    }>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/review-queue${q ? `?${q}` : ""}`);
+  },
+
+  reviewSubmit: (campaignId: string, scores: { image_path: string; score: string }[]) =>
+    postJson<{ ok: boolean; auto_advanced?: boolean; stage?: string }>(
+      `${API_BASE}/api/v1/labeling/campaigns/${campaignId}/review-submit`,
+      { scores },
+    ),
 
   cuboidFit: (campaignId: string) =>
     postJson<Record<string, unknown>>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/cuboid-fit`),
@@ -285,6 +345,25 @@ export const hsapApi = {
   registerBatch: (body: Record<string, unknown>) => postJson(`${API_BASE}/api/v1/register-batch`, body),
 
   // ── Deliveries ──
+  scanDeliveries: (projects?: string[]) => {
+    const p = new URLSearchParams();
+    if (projects?.length) p.set("projects", projects.join(","));
+    const qs = p.toString();
+    return fetchJson<{
+      items: Record<string, unknown>[];
+      count: number;
+      needs_ledger: number;
+      needs_workbench: number;
+      scanned_at?: string;
+    }>(`${API_BASE}/api/v1/deliveries/scan${qs ? `?${qs}` : ""}`);
+  },
+
+  registerScannedDeliveries: (items: Record<string, unknown>[], syncWorkbench = true) =>
+    postJson<{ ok: boolean; created: number; updated: number; synced_workbench: number }>(
+      `${API_BASE}/api/v1/deliveries/scan/register`,
+      { items, sync_workbench: syncWorkbench },
+    ),
+
   listDeliveries: (opts?: { status?: string; mine?: boolean; offset?: number; limit?: number }) => {
     const p = new URLSearchParams();
     if (opts?.status) p.set("status", opts.status);
@@ -465,7 +544,7 @@ export const hsapApi = {
   },
 
   setUserRoles: (userId: number, roles: string[]) =>
-    putJson(`${API_BASE}/api/v1/auth/users/${userId}/roles`, { roles }),
+    putJson(`${API_BASE}/api/v1/auth/users/${userId}/roles`, { role_codes: roles }),
 
   syncFeishuUsers: () =>
     postJson<{ ok: boolean; created: number; updated: number; total: number }>(`${API_BASE}/api/v1/system/feishu/sync-users`),

@@ -40,7 +40,6 @@ function readStoredScope(fallback: string): string {
 
 export const CatalogPage: React.FC = () => {
   const [cat, setCat] = useState<CatalogReport | null>(null);
-  const [dmsDetail, setDmsDetail] = useState<DmsTaskEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [domain, setDomain] = useState<DomainTab>("dms");
@@ -61,15 +60,8 @@ export const CatalogPage: React.FC = () => {
   const scope = parseCatalogScope(scopeKey);
   const isPackView = scope.project === "dms-pack";
 
-  const loadDmsDetail = async (refresh = false) => {
-    if (!isDmsCatalogScope(scope) || !scope.task) return;
-    try { setDmsDetail((await hsapApi.catalogDms(scope.task, refresh)) as DmsTaskEntry); }
-    catch { setDmsDetail(null); }
-  };
-
   useEffect(() => { load(); }, []);
   useEffect(() => { if (!cat) return; setUi((prev) => { const next = selectionFromScopeKey(scopeKeyFromSelection(prev), cat); return next; }); }, [cat]);
-  useEffect(() => { loadDmsDetail(); }, [scopeKey]);
   useEffect(() => { try { localStorage.setItem(SCOPE_STORAGE_KEY, scopeKey); } catch { /* */ } }, [scopeKey]);
 
   // Filter tasks by domain
@@ -151,7 +143,7 @@ export const CatalogPage: React.FC = () => {
   };
 
   // DMS/Forward: use existing data paths
-  const taskEntry: DmsTaskEntry | undefined = isDmsCatalogScope(scope) ? dmsDetail || (dmsData[scope.task] as DmsTaskEntry | undefined) : undefined;
+  const taskEntry: DmsTaskEntry | undefined = isDmsCatalogScope(scope) ? (dmsData[scope.task] as DmsTaskEntry | undefined) : undefined;
   const packRow: DmsPackRow | undefined = isPackView && scope.pack ? findPackRow(taskEntry, scope.pack, scope.mode) : undefined;
   const activePackTask = packTasks.find((t) => t.key === packTaskKey(ui.task, ui.mode || undefined));
   const modePacks = scope.project === "dms" ? dmsPacks(taskEntry, scope.mode || "") : [];
@@ -171,7 +163,7 @@ export const CatalogPage: React.FC = () => {
           <h1>数据目录</h1>
           <p>按训练包与任务查看统计分布</p>
         </div>
-        <Button variant="default" size="small" onClick={() => { load(true); loadDmsDetail(true); }} disabled={loading}>刷新</Button>
+        <Button variant="default" size="small" onClick={() => load(true)} disabled={loading}>刷新</Button>
       </div>
 
       {err && <p className="text-red-500 text-sm mb-3">{err}</p>}

@@ -1,0 +1,70 @@
+version: 1
+description: lake_example 各业务线落盘样例（镜像 HSAP/datasets/inbox）
+
+examples:
+  - id: dms_addw
+    line: DMS · ADDW
+    project: dms
+    task: addw
+    mode: null
+    batch: 20260616_addw_pilot
+    path: dms/inbox/addw/20260616_addw_pilot
+
+  - id: dms_ddaw
+    line: DMS · DDAW
+    project: dms
+    task: ddaw
+    batch: 20260616_ddaw_pilot
+    path: dms/inbox/ddaw/20260616_ddaw_pilot
+
+  - id: dms_addw_face
+    line: DMS · ADDW 人脸关键点
+    project: dms
+    task: addw_face
+    batch: 20260616_face_pilot
+    path: dms/inbox/addw_face/20260616_face_pilot
+
+  - id: dms_dam
+    line: DMS · DAM
+    project: dms
+    task: dam
+    mode: batch_0516
+    batch: 20260616_dam_wave
+    path: dms/inbox/dam/batch_0516/20260616_dam_wave
+
+  - id: dms_forward_detect
+    line: ADAS · 前向粗检测
+    project: dms
+    task: forward
+    mode: detect
+    batch: 20260616_fwd_det
+    path: dms/inbox/forward/detect/20260616_fwd_det
+
+  - id: dms_forward_classify
+    line: ADAS · 前向细分类
+    project: dms
+    task: forward
+    mode: classify
+    batch: 20260616_fwd_cls
+    path: dms/inbox/forward/classify/20260616_fwd_cls
+
+  - id: adas_2d
+    line: ADAS · 2D 七类
+    project: adas
+    task: det_7cls
+    batch: 20260616_adas2d_pilot
+    path: adas/inbox/det_7cls/20260616_adas2d_pilot
+
+  - id: adas_3d
+    line: ADAS · 3D MOON Cuboid
+    project: adas
+    task: cuboid_7cls
+    batch: 20260616_3d_pilot
+    path: adas/inbox/cuboid_7cls/20260616_3d_pilot
+
+  - id: lane
+    line: 车道线 UFLD
+    project: lane
+    task: lane_v1
+    batch: 20260616_lane_pilot
+    path: lane/inbox/20260616_lane_pilot

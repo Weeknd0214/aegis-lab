@@ -1,90 +1,65 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
 import { hsapApi } from "@/app/hsap-api";
 import { Button } from "@/components/ui/Button";
-import { StageBadge, Badge } from "@/components/ui/Badge";
 import { PageQueryState } from "@/components/PageQueryState";
+import { ListPaginationBar } from "@/components/ListPaginationBar";
+import { LabelingListToolbar } from "../components/LabelingListToolbar";
+import { WorkbenchBatchTable } from "../components/WorkbenchBatchTable";
+import { displayTaskFields } from "@/lib/labelingDisplay";
 import type { LabelingBatchRow } from "@/lib/types";
-
-type ScanItem = { project: string; task: string; batch: string; path: string; images: number; labels: number; has_labels: boolean; stage_hint: string };
 
 export const WorkbenchPage: React.FC = () => {
   const [batches, setBatches] = useState<LabelingBatchRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [indexedAt, setIndexedAt] = useState<string | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
   const [stage, setStage] = useState("raw_pool");
   const [search, setSearch] = useState("");
 
-  const filteredBatches = batches.filter((b) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (b.batch || "").toLowerCase().includes(q) || (b.task || "").toLowerCase().includes(q);
-  });
+  const STAGE_FILTERS = [
+    { label: "待送标", value: "raw_pool" },
+    { label: "标中", value: "out_for_labeling" },
+    { label: "待入库", value: "returned" },
+  ];
 
-  // Scan inbox
-  const [scanning, setScanning] = useState(false);
-  const [scanItems, setScanItems] = useState<ScanItem[]>([]);
-  const [showScan, setShowScan] = useState(false);
-  const [registering, setRegistering] = useState<string | null>(null);
-
-  const load = useCallback(async (filterStage: string) => {
-    setLoading(true); setError(null);
+  const load = useCallback(async (filterStage: string, newOffset: number, newLimit: number) => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await hsapApi.labelingBatches({ stage: filterStage, limit: 100 });
+      const q = search.trim() || undefined;
+      const res = await hsapApi.labelingBatches({ stage: filterStage, offset: newOffset, limit: newLimit, q });
       setBatches((res.items || []) as LabelingBatchRow[]);
-    } catch (e) { setError(String(e)); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(stage); }, [stage, load]);
-
-  const handleScan = async () => {
-    setScanning(true); setError(null);
-    try {
-      const [dms, adas] = await Promise.all([
-        hsapApi.scanInbox("dms"),
-        hsapApi.scanInbox("adas"),
-      ]);
-      const items = [
-        ...((dms.items || []) as unknown as ScanItem[]),
-        ...((adas.items || []) as unknown as ScanItem[]),
-      ];
-      setScanItems(items);
-      setShowScan(true);
-    } catch (e) { setError(String(e)); }
-    setScanning(false);
-  };
-
-  const handleRegister = async (item: ScanItem) => {
-    setRegistering(item.batch);
-    try {
-      await hsapApi.registerBatch({
-        project: item.project, task: item.task, batch: item.batch,
-        stage: item.stage_hint, location: "inbox",
-      });
-      setScanItems((prev) => prev.filter((s) => s.batch !== item.batch));
-      load(stage);
-      setInfo(`已登记: ${item.task}/${item.batch}`);
-    } catch (e) { setError(String(e)); }
-    setRegistering(null);
-  };
-
-  const handleRegisterAll = async () => {
-    let count = 0;
-    for (const item of scanItems) {
-      try {
-        await hsapApi.registerBatch({
-          project: item.project, task: item.task, batch: item.batch,
-          stage: item.stage_hint, location: "inbox",
-        });
-        count++;
-      } catch { /* skip */ }
+      setTotal(res.total ?? 0);
+      setOffset(newOffset);
+      setLimit(newLimit);
+      setIndexedAt(res.updated_at || null);
+    } catch (e) {
+      setError(String(e));
     }
-    setScanItems([]); setShowScan(false);
-    load(stage);
-    setInfo(`已登记 ${count} 个批次`);
+    setLoading(false);
+  }, [search]);
+
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
+  const handleRebuildIndex = async () => {
+    setRebuilding(true);
+    setError(null);
+    try {
+      const r = await hsapApi.rebuildBatchIndex();
+      setInfo(`索引已更新 ${r.count} 条（${r.elapsed_ms}ms）`);
+      await load(stage, offset, limit);
+    } catch (e) {
+      setError(String(e));
+    }
+    setRebuilding(false);
   };
+
+  useEffect(() => { void load(stage, 0, limit); }, [stage, search]);
 
   const handleOpenCampaign = async (row: LabelingBatchRow) => {
     if (!row.task) return;
@@ -93,15 +68,31 @@ export const WorkbenchPage: React.FC = () => {
         project: row.project, task: row.task, batch: row.batch,
         mode: row.mode || null, pack: row.pack || null, location: row.location,
       });
-      load(stage);
+      load(stage, offset, limit);
     } catch (e) { setError(String(e)); }
   };
 
-  const STAGES = [
-    { key: "raw_pool", label: "待送标" },
-    { key: "out_for_labeling", label: "标中" },
-    { key: "returned", label: "待入库" },
-  ];
+  const handleArchive = async (row: LabelingBatchRow) => {
+    const cid = row.campaign_id;
+    if (!cid) return;
+    const label = `${displayTaskFields(row)} / ${row.batch}`;
+    const ok = window.confirm(
+      `确定从工作台移除「${label}」？\n\n`
+      + "不会删除磁盘上的图片与标注文件，仅从列表隐藏。\n"
+      + "之后可在批次台账重新扫描登记。",
+    );
+    if (!ok) return;
+    setArchivingId(cid);
+    setError(null);
+    try {
+      await hsapApi.archiveLabelingBatch(cid);
+      setInfo(`已移除: ${row.batch}`);
+      await load(stage, offset, limit);
+    } catch (e) {
+      setError(String(e));
+    }
+    setArchivingId(null);
+  };
 
   return (
     <div className="page-container">
@@ -110,105 +101,48 @@ export const WorkbenchPage: React.FC = () => {
           <h1>送标工作台</h1>
           <p>管理数据标注批次的全生命周期</p>
         </div>
-        <Button variant="primary" size="small" onClick={handleScan} loading={scanning}>
-          扫描入库
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="default" size="small" onClick={handleRebuildIndex} loading={rebuilding}>
+            同步磁盘
+          </Button>
+          {indexedAt && <span className="text-xs text-gray-400">索引 {indexedAt.slice(11, 19)}</span>}
+        </div>
       </div>
 
       {info && <div className="bg-green-50 border border-green-200 rounded p-3 mb-4 text-sm text-green-700">{info}</div>}
 
-      {/* Scan results panel */}
-      {showScan && (
-        <div className="card mb-4 border-blue-200 bg-blue-50/30">
-          <div className="card-header flex items-center justify-between">
-            <span>扫描结果 — 发现 {scanItems.length} 个未登记批次</span>
-            <div className="flex gap-2">
-              {scanItems.length > 0 && <Button size="small" variant="primary" onClick={handleRegisterAll}>全部登记</Button>}
-              <Button size="small" variant="default" onClick={() => setShowScan(false)}>收起</Button>
-            </div>
-          </div>
-          {scanItems.length === 0 ? (
-            <p className="text-sm text-gray-400">所有 inbox 数据均已登记</p>
-          ) : (
-            <table className="table-auto">
-              <thead>
-                <tr><th>任务</th><th>批次</th><th>图片</th><th>标注</th><th>状态</th><th>操作</th></tr>
-              </thead>
-              <tbody>
-                {scanItems.map((item) => (
-                  <tr key={`${item.task}/${item.batch}`}>
-                    <td className="font-medium">{item.task}</td>
-                    <td>{item.batch}</td>
-                    <td>{item.images}</td>
-                    <td>{item.has_labels ? <Badge variant="success" size="small">{item.labels} 个</Badge> : <span className="text-gray-400">无标注</span>}</td>
-                    <td><StageBadge stage={item.stage_hint} /></td>
-                    <td>
-                      <Button size="small" variant="primary" loading={registering === item.batch} onClick={() => handleRegister(item)}>
-                        登记入库
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {/* Stage filter + Search */}
-      <div className="flex gap-2 mb-4 items-center flex-wrap">
-        {STAGES.map((s) => (
-          <button key={s.key} onClick={() => setStage(s.key)}
-            className={`px-4 py-2 text-sm rounded-md transition-colors ${stage === s.key ? "bg-blue-700 text-white" : "bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-            {s.label}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <input className="form-input w-40" placeholder="搜索批次..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-2 mb-4 text-xs text-blue-800">
+        新批次请先在 <a href="/labeling/deliveries" className="underline font-medium">批次台账</a> 扫描数据湖或登记 NAS 送标，入湖后再来此开标。
       </div>
 
-      <PageQueryState loading={loading} error={error} empty={filteredBatches.length === 0}>
-        <div className="space-y-2">
-          {filteredBatches.map((b) => (
-            <div key={`${b.project}/${b.task}/${b.batch}`} className="card hover:shadow-sm transition-shadow">
-              <div className="flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{b.batch}</span>
-                    <span className="text-xs text-gray-400">{b.project}/{b.task || "—"}</span>
-                    <StageBadge stage={b.stage} />
-                    {(b as any).annotation_types?.map((t: string) => (
-                      <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
-                        {{bbox: "2D框", keypoint: "关键点", polyline: "车道线", cuboid: "3D框"}[t] || t}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-3 mt-1 text-xs text-gray-400">
-                    <span>🖼 {b.counts?.images ?? 0}</span>
-                    <span>🏷 {b.counts?.labels ?? 0}</span>
-                  </div>
-                </div>
-                <div className="shrink-0">
-                  {b.stage === "raw_pool" && (
-                    <Button size="small" variant="primary" onClick={() => handleOpenCampaign(b)}>开标</Button>
-                  )}
-                  {b.stage === "out_for_labeling" && b.campaign_id && (
-                    <Link to={`/labeling/annotate/${b.campaign_id}`}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
-                      ✏️ 进入标注
-                    </Link>
-                  )}
-                  {b.stage === "returned" && (
-                    <Link to="/labeling/export"
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
-                      🏗 提交 build
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+      <LabelingListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="搜索批次/任务..."
+        filters={STAGE_FILTERS}
+        filterValue={stage}
+        onFilterChange={setStage}
+        total={total}
+      />
+
+      <PageQueryState loading={loading} error={error} empty={!loading && total === 0}>
+        {total > 0 && (
+          <>
+            <WorkbenchBatchTable
+              batches={batches}
+              onOpenCampaign={handleOpenCampaign}
+              onArchive={handleArchive}
+              archivingId={archivingId}
+            />
+            <ListPaginationBar
+              total={total}
+              offset={offset}
+              limit={limit}
+              onOffsetChange={(o) => load(stage, o, limit)}
+              onLimitChange={(l) => load(stage, 0, l)}
+            />
+          </>
+        )}
       </PageQueryState>
     </div>
   );

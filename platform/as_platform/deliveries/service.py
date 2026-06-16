@@ -24,24 +24,41 @@ def _new_delivery_id() -> str:
 
 
 def _normalize_task(project: str, task: str | None) -> str | None:
-    if project == "dms":
-        return (task or "").strip() or None
-    return None
+    t = (task or "").strip() or None
+    if project == "adas":
+        return t or "cuboid_7cls"
+    if project == "lane":
+        return t
+    return t
 
 
-def _enrich_delivery_dict(db, rec: BatchDelivery) -> dict[str, Any]:
+def _enrich_delivery_dict(db, rec: BatchDelivery, *, ap_map: dict | None = None, job_map: dict | None = None) -> dict[str, Any]:
     d = rec.to_dict()
     d["submitted_by"] = rec.submitted_by_name
     if rec.approval_id:
-        ap = db.get(Approval, rec.approval_id)
+        ap = (ap_map or {}).get(rec.approval_id) if ap_map is not None else db.get(Approval, rec.approval_id)
         if ap:
             d["approval_status"] = ap.status
             d["job_id"] = ap.job_id
             if ap.job_id:
-                job = db.get(Job, ap.job_id)
+                job = (job_map or {}).get(ap.job_id) if job_map is not None else db.get(Job, ap.job_id)
                 if job:
                     d["job_status"] = job.status
     return d
+
+
+def _bulk_approval_maps(db, rows: list[BatchDelivery]) -> tuple[dict[str, Approval], dict[str, Job]]:
+    approval_ids = [r.approval_id for r in rows if r.approval_id]
+    ap_map: dict[str, Approval] = {}
+    job_map: dict[str, Job] = {}
+    if approval_ids:
+        aps = db.query(Approval).filter(Approval.id.in_(approval_ids)).all()
+        ap_map = {a.id: a for a in aps}
+        job_ids = [a.job_id for a in aps if a.job_id]
+        if job_ids:
+            jobs = db.query(Job).filter(Job.id.in_(job_ids)).all()
+            job_map = {j.id: j for j in jobs}
+    return ap_map, job_map
 
 
 def list_deliveries(
@@ -65,8 +82,9 @@ def list_deliveries(
             q = q.filter(BatchDelivery.status.in_(("draft", "rejected", "ingest_failed")))
         total = q.count()
         rows = q.offset(max(0, offset)).limit(max(1, limit)).all()
+        ap_map, job_map = _bulk_approval_maps(db, rows)
         return {
-            "items": [_enrich_delivery_dict(db, r) for r in rows],
+            "items": [_enrich_delivery_dict(db, r, ap_map=ap_map, job_map=job_map) for r in rows],
             "total": total,
             "offset": offset,
             "limit": limit,

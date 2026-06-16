@@ -1,0 +1,14 @@
+.fleet-map-shell {
+  position: relative;
+}
+
+.fleet-map-shell .leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+  font: inherit;
+}
+
+.fleet-map-shell .leaflet-pane,
+.fleet-map-shell .leaflet-tile-pane {
+  z-index: 1;
+}

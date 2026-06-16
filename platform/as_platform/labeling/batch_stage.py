@@ -70,6 +70,12 @@ def update_campaign_batch_meta_stage(camp: LabelingCampaign, stage: str) -> bool
     if camp.mode:
         meta.setdefault("mode", camp.mode)
     write_meta(batch_dir, meta)
+    try:
+        from as_platform.labeling.batch_index import sync_index_stage
+
+        sync_index_stage(camp.id, stage)
+    except Exception:
+        pass
     return True
 
 

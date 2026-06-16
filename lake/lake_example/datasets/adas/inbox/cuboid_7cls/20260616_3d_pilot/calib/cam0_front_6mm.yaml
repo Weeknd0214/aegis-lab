@@ -1,0 +1,18 @@
+schema: huaxu-camera-calib-v1
+camera: cam0
+model: front_6mm
+image_size: [1920, 1080]
+
+# Intrinsic Matrix K (3x3)
+K:
+  - [1189.69669, 0.0, 1007.54822]
+  - [0.0, 1189.69669, 517.47476]
+  - [0.0, 0.0, 1.0]
+
+fx: 1189.69669
+fy: 1189.69669
+cx: 1007.54822
+cy: 517.47476
+
+# Distortion Coefficients (k1,k2,p1,p2,k3,k4,k5,k6)
+distortion: [0.28289, -0.09676, -0.00014, 0.00002, -0.00215, 0.70977, -0.08417, -0.02529]

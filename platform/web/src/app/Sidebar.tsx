@@ -30,7 +30,7 @@ const MODULES: ModuleDef[] = [
       { to: "/labeling/my-tasks", label: "我的标注", perm: "read:pending" },
       { to: "/labeling/workbench", label: "送标工作台", perm: "read:pending" },
       { to: "/labeling/campaigns", label: "标注进度", perm: "read:pending" },
-      { to: "/labeling/review", label: "标注质检", perm: "read:pending" },
+      { to: "/labeling/review", label: "标注质检", perm: "write:approval_review" },
       { to: "/labeling/export", label: "导出与入库", perm: "read:pending" },
       { to: "/labeling/deliveries", label: "批次台账", perm: "read:deliveries" },
       { to: "/labeling/catalog", label: "数据目录", perm: "read:catalog" },
@@ -148,7 +148,8 @@ export const Sidebar: React.FC = () => {
       {/* Brand */}
       <div className="sidebar-brand">
         <NavLink to="/" className="no-underline text-inherit">
-          HSAP <span className="text-gray-400 font-normal text-sm">数据闭环平台</span>
+          HSAP
+          <span className="text-gray-400 font-normal text-[11px]">数据闭环平台</span>
         </NavLink>
       </div>
 

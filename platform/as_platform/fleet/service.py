@@ -377,9 +377,14 @@ def get_live_fleet(db: Session) -> dict[str, Any]:
     items = []
     for v in vehicles:
         active = get_active_run(db, v.id)
+        row = v.to_dict()
+        row["vehicle_id"] = row["id"]
+        row["lat"] = row.get("last_lat")
+        row["lng"] = row.get("last_lng")
+        row["speed_kmh"] = row.get("last_speed_kmh")
         items.append(
             {
-                **v.to_dict(),
+                **row,
                 "active_run_id": active.id if active else None,
                 "active_mileage_km": active.mileage_km if active else None,
                 "active_run_no": active.run_no if active else None,

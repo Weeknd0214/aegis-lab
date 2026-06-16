@@ -1,7 +1,7 @@
 # addw — packs: dms_v1
-path: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/addw
-train: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/addw/images/train
-val: /home/chengfanglu/DATA/workspace/DMS/DATASET/packs/dms_v1/addw/images/val
+path: /data/hsap/datasets/dms/packs/dms_v1/addw
+train: /data/hsap/datasets/dms/packs/dms_v1/addw/images/train
+val: /data/hsap/datasets/dms/packs/dms_v1/addw/images/val
 
 nc: 4
 names: ["face", "eye_open", "nod_face", "nod_eye"]

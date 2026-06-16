@@ -29,6 +29,8 @@ export const LabelingShell: React.FC = () => {
   const { hasPermission } = useAuth();
   const isCoordinator = hasPermission("write:labeling_assign");
   const isAnnotate = /\/labeling\/annotate\//.test(location.pathname);
+  const isReviewDetail = /\/labeling\/review\/[^/]+/.test(location.pathname);
+  const isImmersive = isAnnotate || isReviewDetail;
 
   const visibleTabs = TABS.filter((tab) => {
     if (tab.coordinatorOnly && !isCoordinator) return false;
@@ -40,8 +42,8 @@ export const LabelingShell: React.FC = () => {
 
   return (
     <ModuleGuard requiredPerms={["read:pending", "read:deliveries", "read:catalog", "write:delivery_submit"]}>
-      <div className={isAnnotate ? "h-[calc(100vh-0px)] flex flex-col min-h-0" : undefined}>
-        {!isAnnotate && (
+      <div className={isImmersive ? "labeling-immersive h-full min-h-0 flex flex-col overflow-hidden" : undefined}>
+        {!isImmersive && (
           <nav className="module-tabs">
             {visibleTabs.map((tab) => (
               <NavLink
@@ -55,7 +57,8 @@ export const LabelingShell: React.FC = () => {
             ))}
           </nav>
         )}
-        <Switch>
+        <div className={isImmersive ? "flex-1 min-h-0 flex flex-col overflow-hidden" : undefined}>
+          <Switch>
           <Route exact path={`${path}`} render={() => <Redirect to={defaultPath} />} />
           <Route path={`${path}/annotate/:campaignId`} component={AnnotationPage} />
           <Route path={`${path}/my-tasks`} component={MyTasksPage} />
@@ -67,7 +70,8 @@ export const LabelingShell: React.FC = () => {
           <Route path={`${path}/deliveries`} component={DeliveriesPage} />
           <Route path={`${path}/catalog`} component={CatalogPage} />
           <Route path={`${path}/simulate`} component={SimulationStudioPage} />
-        </Switch>
+          </Switch>
+        </div>
       </div>
     </ModuleGuard>
   );

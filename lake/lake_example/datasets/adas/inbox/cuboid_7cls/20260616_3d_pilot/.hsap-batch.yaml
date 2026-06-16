@@ -1,0 +1,6 @@
+line: ADAS 3D MOON
+project: adas
+task: cuboid_7cls
+mode: null
+batch: 20260616_3d_pilot
+inbox_path: datasets/adas/inbox/cuboid_7cls/20260616_3d_pilot

@@ -33,10 +33,11 @@ profiles:
     scope_key: "lane:lane_v1"
     export_default: lane_gt_txt
     ml_adapter: lane_ufld
-  cuboid_7cls:
-    scope_key: "adas:cuboid_7cls"
-    export_default: cvat_cuboid
+  det_7cls:
+    scope_key: "adas:det_7cls"
+    export_default: yolo
     ml_adapter: adas_yolo26
+    cvat_label_type: rectangle
     cvat_labels:
       - pedestrian
       - car
@@ -45,3 +46,13 @@ profiles:
       - motorcycle
       - tricycle
       - traffic cone
+  cuboid_7cls:
+    scope_key: "adas:cuboid_7cls"
+    export_default: cvat_cuboid
+    ml_adapter: adas_yolo26
+    cvat_label_type: cuboid
+  adas:
+    scope_key: "dms:adas"
+    export_default: yolo
+    ml_adapter: adas_yolo26
+    cvat_label_type: rectangle

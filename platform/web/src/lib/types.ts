@@ -31,6 +31,7 @@ export type BatchRecord = {
 
 export type LabelingBatchRow = BatchRecord & {
   scope_key?: string;
+  domain?: string;
   domain_label?: string;
   task_label?: string;
   mode_label?: string;

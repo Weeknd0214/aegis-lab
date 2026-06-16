@@ -319,6 +319,67 @@ class BatchDelivery(Base):
         }
 
 
+class BatchIndex(Base):
+    """批次列表索引：由扫盘/登记/阶段变更写入，列表 API 只读此表。"""
+
+    __tablename__ = "batch_index"
+
+    campaign_id = Column(String(64), primary_key=True)
+    project = Column(String(32), nullable=False, index=True)
+    task = Column(String(64), nullable=True, index=True)
+    mode = Column(String(64), nullable=True)
+    batch = Column(String(128), nullable=False, index=True)
+    pack = Column(String(64), nullable=True)
+    location = Column(String(32), nullable=False, default="inbox")
+    stage = Column(String(32), nullable=False, index=True)
+    batch_path = Column(String(1024), nullable=True)
+    scope_key = Column(String(128), nullable=True)
+    engineer = Column(String(128), nullable=True)
+    format = Column(String(32), nullable=True)
+    image_count = Column(Integer, nullable=False, default=0)
+    label_count = Column(Integer, nullable=False, default=0)
+    has_meta = Column(Boolean, nullable=False, default=False)
+    registry_only = Column(Boolean, nullable=False, default=False)
+    next_cli = Column(String(512), nullable=True)
+    domain = Column(String(32), nullable=True)
+    domain_label = Column(String(64), nullable=True)
+    task_label = Column(String(128), nullable=True)
+    mode_label = Column(String(128), nullable=True)
+    labeling_profile = Column(String(128), nullable=True)
+    export_default = Column(String(128), nullable=True)
+    ml_adapter = Column(String(128), nullable=True)
+    indexed_at = Column(DateTime(timezone=True), nullable=False)
+    archived = Column(Boolean, nullable=False, default=False, index=True)
+
+    def to_list_row(self) -> dict:
+        return {
+            "project": self.project,
+            "task": self.task,
+            "mode": self.mode,
+            "batch": self.batch,
+            "pack": self.pack,
+            "stage": self.stage,
+            "location": self.location,
+            "path": self.batch_path,
+            "engineer": self.engineer,
+            "format": self.format,
+            "counts": {"images": self.image_count, "labels": self.label_count},
+            "has_meta": self.has_meta,
+            "next_cli": self.next_cli,
+            "scope_key": self.scope_key,
+            "domain": self.domain,
+            "domain_label": self.domain_label,
+            "task_label": self.task_label,
+            "mode_label": self.mode_label,
+            "labeling_profile": self.labeling_profile,
+            "export_default": self.export_default,
+            "ml_adapter": self.ml_adapter,
+            "campaign_id": self.campaign_id,
+            "registry_only": self.registry_only,
+            "indexed_at": self.indexed_at.isoformat() if self.indexed_at else None,
+        }
+
+
 class FeishuBitableLink(Base):
     """HSAP 批次与飞书多维表格行的对应关系。"""
 

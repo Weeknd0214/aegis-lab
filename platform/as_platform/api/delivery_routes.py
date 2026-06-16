@@ -45,6 +45,45 @@ class DeliveryPatchBody(BaseModel):
     owner_name: str | None = None
 
 
+@router.get("/scan")
+def api_scan_deliveries(
+    _user: Annotated[User, Depends(require_any_permission("read:deliveries", "read:pending", "*"))],
+    projects: str | None = Query(None, description="逗号分隔: dms,adas,lane"),
+) -> dict[str, Any]:
+    from as_platform.deliveries.scan import scan_delivery_sources
+
+    projs = [p.strip() for p in projects.split(",") if p.strip()] if projects else None
+    return scan_delivery_sources(projects=projs)
+
+
+class ScanRegisterBody(BaseModel):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    sync_workbench: bool = True
+
+
+@router.post("/scan/register")
+def api_register_scanned_deliveries(
+    body: ScanRegisterBody,
+    user: Annotated[User, Depends(require_any_permission("write:delivery_submit", "*"))],
+) -> dict[str, Any]:
+    from as_platform.deliveries.scan import register_scanned_to_ledger
+
+    return register_scanned_to_ledger(body.items, user, sync_workbench=body.sync_workbench)
+
+
+@router.post("/{delivery_id}/sync-workbench")
+def api_sync_delivery_workbench(
+    delivery_id: str,
+    _user: Annotated[User, Depends(require_any_permission("write:delivery_submit", "*"))],
+) -> dict[str, Any]:
+    from as_platform.deliveries.scan import bridge_delivery_to_workbench
+
+    try:
+        return bridge_delivery_to_workbench(delivery_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
 @router.get("")
 def api_list_deliveries(
     _user: Annotated[User, Depends(require_any_permission("read:deliveries", "read:pending", "*"))],

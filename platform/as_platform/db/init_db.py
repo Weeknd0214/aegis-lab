@@ -28,7 +28,7 @@ ROLE_DEFS: dict[str, tuple[str, list[str]]] = {
     ]),
     "engineer": ("算法工程师", [
         "read:catalog", "read:pending", "read:jobs", "read:audit", "read:fleet", "write:fleet",
-        "write:approval_submit", "write:delivery_submit", "read:deliveries",
+        "write:approval_submit", "write:approval_review", "write:delivery_submit", "read:deliveries",
         "write:labeling_vendor", "write:labeling_assign",
     ]),
     "labeler": ("标注协调", [
@@ -79,6 +79,7 @@ def init_database() -> None:
         _ensure_feishu_bitable_columns(db)
         _ensure_approval_columns(db)
         _ensure_operation_log_columns(db)
+        _ensure_batch_index_columns(db)
         _seed_roles_permissions(db)
         _seed_fleet_demo(db)
         _import_jsonl_if_empty(db)
@@ -168,18 +169,22 @@ def _import_jsonl_if_empty(db: Session) -> None:
 
 
 def assign_default_role(db: Session, user: User) -> None:
-    """新用户默认角色；支持 open_id / 部门白名单自动 admin。"""
+    """新用户默认角色；白名单用户每次登录也会补齐 admin。"""
+    admin_role = db.query(Role).filter_by(code="admin").first()
     user_dept_ids = set(user.feishu_department_ids())
     if user.feishu_open_id and user.feishu_open_id in FEISHU_ADMIN_OPEN_IDS:
-        role_code = "admin"
-    elif user_dept_ids and user_dept_ids.intersection(FEISHU_ADMIN_DEPARTMENT_IDS):
-        role_code = "admin"
-    elif not user.roles:
-        role_code = "engineer"
-    else:
+        if admin_role and admin_role not in user.roles:
+            user.roles.append(admin_role)
         return
+    if user_dept_ids and user_dept_ids.intersection(FEISHU_ADMIN_DEPARTMENT_IDS):
+        if admin_role and admin_role not in user.roles:
+            user.roles.append(admin_role)
+        return
+    if user.roles:
+        return
+    role_code = "engineer"
     role = db.query(Role).filter_by(code=role_code).first()
-    if role and role not in user.roles:
+    if role:
         user.roles.append(role)
 
 
@@ -323,6 +328,10 @@ def _ensure_user_columns(db: Session) -> None:
 
 def _ensure_approval_columns(db: Session) -> None:
     _ensure_table_columns(db, "approvals", {"rejection_category": "VARCHAR(32) DEFAULT ''"})
+
+
+def _ensure_batch_index_columns(db: Session) -> None:
+    _ensure_table_columns(db, "batch_index", {"archived": "BOOLEAN DEFAULT FALSE"})
 
 
 def _ensure_operation_log_columns(db: Session) -> None:

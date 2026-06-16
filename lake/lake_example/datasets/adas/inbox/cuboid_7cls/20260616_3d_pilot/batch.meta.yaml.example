@@ -1,0 +1,8 @@
+schema: huaxu-batch-v1
+project: adas
+task: cuboid_7cls
+batch: 20260616_3d_pilot
+stage: raw_pool
+location: inbox
+format: cvat_cuboid
+# 3D 批次：建议同目录提供 calib/*.yaml

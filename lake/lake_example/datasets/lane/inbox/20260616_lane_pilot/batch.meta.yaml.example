@@ -1,0 +1,6 @@
+schema: huaxu-batch-v1
+project: lane
+batch: 20260616_lane_pilot
+stage: raw_pool
+location: inbox
+format: ufld_archive

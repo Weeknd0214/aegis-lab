@@ -63,7 +63,11 @@ export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
     failed: { variant: "danger", label: "失败" },
     draft: { variant: "default", label: "草稿" },
     submitted: { variant: "info", label: "已提交" },
+    pending_review: { variant: "warning", label: "待审核" },
+    ingesting: { variant: "info", label: "入湖中" },
+    in_lake: { variant: "success", label: "已入湖" },
     ingested: { variant: "success", label: "已入湖" },
+    ingest_failed: { variant: "danger", label: "入湖失败" },
     cancelled: { variant: "default", label: "已取消" },
   };
   const m = map[status] || { variant: "default" as const, label: status };

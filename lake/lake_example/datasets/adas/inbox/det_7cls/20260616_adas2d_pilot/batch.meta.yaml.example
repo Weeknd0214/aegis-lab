@@ -1,0 +1,7 @@
+schema: huaxu-batch-v1
+project: adas
+task: det_7cls
+batch: 20260616_adas2d_pilot
+stage: raw_pool
+location: inbox
+format: yolo

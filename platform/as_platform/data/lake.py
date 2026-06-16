@@ -425,6 +425,11 @@ def promote_candidate_to_inbox(
             raise ValueError(f"任务 {task} 为 multi，须指定 mode（如 batch_0516）")
         dest = _resolve_dms_inbox_dest(root, reg, task, eff_mode, batch_name)
         reg_batch = eff_mode or batch_name
+    elif project == "adas":
+        if not task:
+            raise ValueError("ADAS 晋级需要 task（det_7cls 或 cuboid_7cls）")
+        dest = root / "inbox" / task / batch_name
+        reg_batch = batch_name
     else:
         dest = root / "inbox" / batch_name
         reg_batch = batch_name
@@ -439,7 +444,7 @@ def promote_candidate_to_inbox(
     row = enrich_batch(
         dest,
         project=project,
-        task=task if project == "dms" else None,
+        task=task,
         pack=None,
         batch=reg_batch,
         location="inbox",
@@ -482,6 +487,12 @@ def promote_candidate_to_inbox(
             db.flush()
 
     invalidate_catalog_cache()
+    try:
+        from as_platform.labeling.batch_index import upsert_batch_dict
+
+        upsert_batch_dict({**meta, "path": str(dest), "location": "inbox"})
+    except Exception:
+        pass
     return {
         "ok": True,
         "candidate_id": candidate_id,

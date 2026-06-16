@@ -108,66 +108,23 @@ def _registry_fallback_batches(wf: dict, reg: dict) -> list[dict[str, Any]]:
 def list_labeling_batches(
     *,
     stage: str | None = None,
+    stages: list[str] | None = None,
     offset: int = 0,
     limit: int = 20,
+    refresh: bool = False,
+    q: str | None = None,
 ) -> dict[str, Any]:
-    wf = load_wf()
-    report = get_pending_report(wf)
-    reg = load_dms_registry()
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    allowed_stages = ("raw_pool", "out_for_labeling", "returned", "labeling_submitted", "in_review", "review_approved", "review_rejected")
+    from as_platform.labeling.batch_index import (
+        index_is_empty,
+        list_batches_from_index,
+        rebuild_batch_index,
+    )
 
-    def _append(b: dict[str, Any]) -> None:
-        if b.get("registry_only"):
-            return
-        raw_stage = b.get("stage")
-        eff = effective_stage(raw_stage)
-        if stage and not matches_stage_filter(raw_stage, stage):
-            return
-        if eff not in allowed_stages and raw_stage not in allowed_stages:
-            return
-        row = enrich_batch_labels(b, reg)
-        row["stage"] = eff or raw_stage
-        cid = _campaign_id(
-            row["project"], row.get("task") or "", row.get("mode"), row["batch"], row.get("location") or "inbox"
-        )
-        key = f"{cid}"
-        if key in seen:
-            return
-        seen.add(key)
-        with session_scope() as db:
-            camp = db.get(LabelingCampaign, cid)
-            status = camp.status if camp else "not_opened"
-            if camp:
-                row["assigned_to_user_id"] = camp.assigned_to_user_id
-                row["assigned_to_name"] = camp.assigned_to_name
-        row["campaign_id"] = cid
-        row["campaign_status"] = status
-        if camp and status in ("in_progress", "labeling_submitted"):
-            try:
-                from as_platform.labeling.progress import campaign_progress_summary
-
-                row.update(campaign_progress_summary(cid))
-            except Exception:
-                row.update({"total_tasks": 0, "completed_tasks": 0, "assigned_tasks": 0})
-        items.append(row)
-
-    for b in report.get("batches", []):
-        _append(b)
-
-    for b in _registry_fallback_batches(wf, reg):
-        _append(b)
-
-    total = len(items)
-    page = items[max(0, offset) : max(0, offset) + max(1, limit)]
-    return {
-        "items": page,
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "updated_at": report.get("updated_at"),
-    }
+    if refresh or index_is_empty():
+        rebuild_batch_index()
+    return list_batches_from_index(
+        stage=stage, stages=stages, offset=offset, limit=limit, q=q,
+    )
 
 
 def open_campaign(
@@ -196,6 +153,7 @@ def open_campaign(
     cvat_task_id = cvat_task.id
     cvat_job_url = cvat_task.job_url
 
+    batch_dir = None
     with session_scope() as db:
         camp = db.get(LabelingCampaign, cid)
         if not camp:
@@ -241,6 +199,26 @@ def open_campaign(
     reg = load_dms_registry() if project == "dms" else None
     row = enrich_batch_labels(out, reg)
     row["stage"] = "out_for_labeling"
+    try:
+        from as_platform.labeling.batch_index import upsert_batch_dict
+
+        if batch_dir and batch_dir.is_dir():
+            from as_platform.data.batch import enrich_batch
+
+            upsert_batch_dict(
+                enrich_batch(
+                    batch_dir,
+                    project=project,
+                    task=task,
+                    pack=pack,
+                    batch=batch,
+                    location=location,
+                ),
+            )
+        else:
+            upsert_batch_dict(row)
+    except Exception:
+        pass
     return row
 
 
@@ -376,23 +354,15 @@ def list_labeling_assignees() -> dict[str, Any]:
 
 
 def _find_batch_for_campaign_id(campaign_id: str) -> dict[str, Any] | None:
-    """由确定性 campaign_id 反查 pending / registry 批次行。"""
-    wf = load_wf()
-    reg = load_dms_registry()
-    candidates: list[dict[str, Any]] = []
-    report = get_pending_report(wf)
-    candidates.extend(report.get("batches") or [])
-    candidates.extend(_registry_fallback_batches(wf, reg))
-    for b in candidates:
-        cid = _campaign_id(
-            b.get("project") or "dms",
-            b.get("task") or "",
-            b.get("mode"),
-            b.get("batch") or "",
-            b.get("location") or "inbox",
-        )
-        if cid == campaign_id:
-            return b
+    """由 campaign_id 反查批次行（优先读索引）。"""
+    from as_platform.labeling.batch_index import get_batch_by_campaign_id, index_is_empty, rebuild_batch_index
+
+    row = get_batch_by_campaign_id(campaign_id)
+    if row:
+        return row
+    if index_is_empty():
+        rebuild_batch_index()
+        return get_batch_by_campaign_id(campaign_id)
     return None
 
 

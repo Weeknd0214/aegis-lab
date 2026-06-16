@@ -1,0 +1,5 @@
+line: Lane UFLD
+project: lane
+task: lane_v1
+batch: 20260616_lane_pilot
+inbox_path: datasets/lane/inbox/20260616_lane_pilot

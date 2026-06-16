@@ -1098,15 +1098,22 @@ def register_batch(
 
     meta_path = write_meta(batch_dir, data)
     invalidate_catalog_cache()
+    batch_row = enrich_batch(
+        batch_dir,
+        project=project,
+        task=task,
+        pack=pack,
+        batch=batch,
+        location=location,
+    )
+    try:
+        from as_platform.labeling.batch_index import upsert_batch_dict
+
+        upsert_batch_dict(batch_row)
+    except Exception:
+        pass
     return {
         "ok": True,
         "meta_path": str(meta_path),
-        "batch": enrich_batch(
-            batch_dir,
-            project=project,
-            task=task,
-            pack=pack,
-            batch=batch,
-            location=location,
-        ),
+        "batch": batch_row,
     }

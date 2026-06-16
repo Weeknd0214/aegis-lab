@@ -36,7 +36,18 @@ def resolve_pack_dir(root: Path, pack_name: str) -> Path:
     name = reg.get("aliases", {}).get(pack_name, pack_name)
     for item in reg.get("packs", []):
         if item.get("name") == name:
-            return (root / item["path"]).resolve()
+            candidate = root / item["path"]
+            if candidate.is_symlink():
+                try:
+                    resolved = candidate.resolve()
+                    if resolved.is_dir():
+                        return resolved
+                except OSError:
+                    pass
+                if not candidate.exists():
+                    candidate.unlink()
+                    candidate.mkdir(parents=True, exist_ok=True)
+            return candidate.resolve()
     candidate = root / name
     if candidate.is_dir():
         return candidate.resolve()

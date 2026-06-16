@@ -693,7 +693,8 @@ def api_scan_inbox(
     project: str = Query("dms"),
 ) -> dict[str, Any]:
     """扫描 inbox 目录，返回未登记的新批次。"""
-    from as_platform.data.core import get_pending_report, load_wf, proj_root
+    from as_platform.data.core import load_wf, proj_root
+    from as_platform.labeling.batch_index import index_is_empty, rebuild_batch_index
 
     wf = load_wf()
     root = proj_root(wf, project)
@@ -701,8 +702,20 @@ def api_scan_inbox(
     if not inbox.is_dir():
         return {"project": project, "items": [], "inbox_path": str(inbox)}
 
-    report = get_pending_report()
-    registered = {b.get("batch", "") for b in report.get("batches", [])}
+    if index_is_empty():
+        rebuild_batch_index(wf)
+
+    from as_platform.db.engine import session_scope
+    from as_platform.db.models import BatchIndex
+
+    with session_scope() as db:
+        registered = {
+            (r.task or "", r.batch)
+            for r in db.query(BatchIndex).filter(
+                BatchIndex.project == project,
+                BatchIndex.archived.is_(False),
+            ).all()
+        }
 
     items: list[dict[str, Any]] = []
     for task_dir in sorted(inbox.iterdir()):
@@ -713,7 +726,7 @@ def api_scan_inbox(
                 continue
             batch_name = batch_dir.name
             task_name = task_dir.name
-            if batch_name in registered:
+            if (task_name, batch_name) in registered:
                 continue  # 已登记
 
             # Count images (含 images/ 子目录)

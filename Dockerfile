@@ -21,6 +21,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY platform/ ./platform/
+# 前端静态包（scripts/build_web.sh 生成；推 GHCR 前必须已 build）
+COPY platform/ui-hsap/dist ./platform/ui-hsap/dist
 COPY scripts/ ./scripts/
 COPY datasets/ ./datasets/
 COPY as.py workflow.registry.yaml ./

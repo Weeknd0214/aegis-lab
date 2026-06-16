@@ -107,7 +107,10 @@ def _labels_from_registry_profile(project: str, task: str, mode: str | None) -> 
     prof = (load_labeling_registry().get("profiles") or {}).get(pk) or {}
     cvat_names = prof.get("cvat_labels")
     if cvat_names:
-        return [{"name": str(n), "type": "cuboid"} for n in cvat_names]
+        label_type = prof.get("cvat_label_type") or (
+            "cuboid" if project == "adas" and task == "cuboid_7cls" else "rectangle"
+        )
+        return [{"name": str(n), "type": label_type} for n in cvat_names]
     return None
 
 
@@ -126,6 +129,10 @@ def build_cvat_labels(
     if project == "adas":
         if task == "cuboid_7cls":
             return ADAS_CUBOID_7CLS_LABELS
+        if task == "det_7cls":
+            return [_rect_label(n) for n in [
+                "pedestrian", "car", "truck", "bus", "motorcycle", "tricycle", "traffic cone",
+            ]]
         return ADAS_CUBOID_7CLS_LABELS
 
     if project == "lane":
@@ -145,4 +152,8 @@ def resolve_annotation_types(project: str, task: str | None = None, mode: str | 
     }
     if project == "adas" and task == "cuboid_7cls":
         return ["cuboid"]
+    if project == "adas" and task == "det_7cls":
+        return ["bbox"]
+    if project == "dms" and task == "adas":
+        return ["bbox"]
     return mapping.get(project, ["bbox"])

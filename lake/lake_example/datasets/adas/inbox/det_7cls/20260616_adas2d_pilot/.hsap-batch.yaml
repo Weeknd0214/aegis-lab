@@ -1,0 +1,6 @@
+line: ADAS 2D
+project: adas
+task: det_7cls
+mode: null
+batch: 20260616_adas2d_pilot
+inbox_path: datasets/adas/inbox/det_7cls/20260616_adas2d_pilot

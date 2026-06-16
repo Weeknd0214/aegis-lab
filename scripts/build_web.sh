@@ -7,6 +7,10 @@ echo "[web] Installing dependencies..."
 cd "$ROOT/platform/web"
 npm ci --silent
 
+echo "[web] Sync login background..."
+mkdir -p public
+cp "$ROOT/docs/bg.png" public/login-bg.png
+
 echo "[web] Building..."
 npm run build
 

@@ -110,7 +110,12 @@ export const AnnotationPage: React.FC = () => {
   }, [status?.cvat_job_url, activeFrame]);
 
   const runSync = useCallback(async (silent = false): Promise<SyncResult | null> => {
-    if (syncInFlight.current) return null;
+    if (syncInFlight.current) {
+      if (!silent) {
+        setSyncHint("同步进行中，请稍候…");
+      }
+      return null;
+    }
     syncInFlight.current = true;
     if (!silent) setSyncing(true);
     try {
@@ -129,9 +134,15 @@ export const AnnotationPage: React.FC = () => {
       const shapes = Number(data.shapes ?? 0);
       const hint = shapes > 0
         ? `已同步 ${saved} 张 · ${shapes} 个标注 · ${new Date().toLocaleTimeString()}`
-        : `已检查，暂无新标注 · ${new Date().toLocaleTimeString()}`;
+        : `已检查，暂无新标注（请先在 CVAT 画布 Ctrl+S 保存）· ${new Date().toLocaleTimeString()}`;
       setSyncHint(hint);
-      if (!silent && shapes > 0) alert(`标注已同步（${saved} 张，${shapes} 个对象）`);
+      if (!silent) {
+        if (shapes > 0) {
+          alert(`标注已同步（${saved} 张，${shapes} 个对象）`);
+        } else {
+          alert(`同步完成：CVAT 侧暂无新标注。\n请确认已在画布中画框并保存（Ctrl+S），再点「立即同步」。`);
+        }
+      }
       void loadMyTasks();
       return data as SyncResult;
     } catch (e) {
