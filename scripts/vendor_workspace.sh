@@ -33,6 +33,7 @@ EXCLUDE_COMMON=(
 for p in \
   "$ROOT/algorithms/dms_yolo/code" \
   "$ROOT/algorithms/lane_ufld/code" \
+  "$ROOT/algorithms/monoflex/code" \
   "$ROOT/datasets/dms" \
   "$ROOT/datasets/lane"
 do
@@ -64,6 +65,9 @@ echo ">>> Lane UFLD 代码 → algorithms/lane_ufld/code/"
   --exclude 'wandb/' \
   "$WS/LaneDection/Code/" \
   "$ROOT/algorithms/lane_ufld/code/"
+
+echo ">>> MonoFlex 单目 3D → algorithms/monoflex/code/"
+bash "$ROOT/scripts/vendor_monoflex.sh"
 
 echo ">>> DMS 数据集脚手架 → datasets/dms/"
 "${RSYNC[@]}" "${EXCLUDE_COMMON[@]}" \
@@ -99,6 +103,6 @@ echo ""
 echo "完成。请检查:"
 echo "  ls algorithms/dms_yolo/code"
 echo "  ls algorithms/lane_ufld/code/UFLD"
-echo "  ls datasets/dms/scripts"
+echo "  ls algorithms/monoflex/code/tools"
 echo ""
 echo "下一步: git add -A && git status"

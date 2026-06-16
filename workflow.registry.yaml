@@ -61,3 +61,7 @@ projects:
     merge:
       train: lists/train_stems.txt
       val: lists/val_stems.txt
+    train:
+      workdir: algorithms/monoflex/code
+      config: runs/monoflex.yaml
+      engine: monoflex

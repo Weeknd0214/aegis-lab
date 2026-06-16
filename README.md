@@ -115,7 +115,11 @@ aegis-lab/
 │   ├── as_platform/       # FastAPI 后端
 │   └── web/               # React 前端 (Vite)
 ├── datasets/              # 任务 registry、标注 profile、ingest 脚本
-├── algorithms/            # DMS YOLO、Lane UFLD 训练代码
+├── algorithms/            # 训练引擎
+│   ├── dms_yolo/          # DMS YOLO
+│   ├── lane_ufld/         # 车道线 UFLD
+│   ├── monoflex/          # 单目 3D 检测 MonoFlex (CVPR 2021)
+│   └── adas_mono3d/       # Cuboid → 3D 字段拟合（标注导出链）
 ├── lake/lake_example/     # inbox 落盘样例与 manifest
 ├── vendor/cvat/patches/   # CVAT 集成补丁（已纳入版本库）
 ├── docker/
@@ -183,7 +187,7 @@ bash scripts/reset_labeling.sh
 - **前端**：React 18、Vite、Tailwind CSS
 - **标注**：CVAT（Docker 官方镜像 + 定制补丁）
 - **地图**：Leaflet、高德 / OSM 瓦片
-- **训练**：Ultralytics YOLO、UFLD 车道线（`algorithms/`）
+- **训练**：Ultralytics YOLO、UFLD 车道线、**MonoFlex** 单目 3D 检测（`algorithms/monoflex/`）
 
 ---
 

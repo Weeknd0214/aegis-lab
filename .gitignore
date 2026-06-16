@@ -65,6 +65,7 @@ datasets/**/*.avi
 # Docker local
 .workspace-stub/
 
-# Optional: 若改用软链模式，取消注释以忽略内嵌副本
+# MonoFlex / 训练输出（源码在仓内，产物忽略）
+algorithms/monoflex/code/output/
 # algorithms/dms_yolo/code/
 # algorithms/lane_ufld/code/

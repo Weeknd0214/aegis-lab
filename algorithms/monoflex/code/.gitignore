@@ -1,0 +1,6 @@
+__pycache__/
+*.so
+*.egg-info/
+/model/backbone/DCNv2/build/
+/model/backbone/dcn/build/
+/.vscode/

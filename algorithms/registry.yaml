@@ -10,3 +10,9 @@ algorithms:
     workdir: algorithms/lane_ufld/code/UFLD
     conda_env: lane_light
     module: algorithms.lane_ufld.adapter
+  monoflex:
+    projects: [adas]
+    workdir: algorithms/monoflex/code
+    conda_env: monoflex
+    module: algorithms.monoflex.adapter
+    description: MonoFlex 单目 3D 检测 (CVPR 2021)
