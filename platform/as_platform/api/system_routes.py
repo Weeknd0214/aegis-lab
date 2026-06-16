@@ -92,6 +92,47 @@ def api_system_submit_approval(
         raise HTTPException(400, str(e)) from e
 
 
+class BuildFromBatchBody(BaseModel):
+    project: str = "dms"
+    task: str
+    batch: str
+    pack: str = "dms_v2"
+    location: str = "inbox"
+    note: str | None = None
+
+
+@router.post("/audit/submit-build-batch")
+def api_system_submit_build_batch(
+    body: BuildFromBatchBody,
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, Any]:
+    action = "build_adas" if body.project == "adas" else "build_dms"
+    if not can_submit_action(user, action) and not can_submit_action(user, "build_dms"):
+        raise HTTPException(403, "无权提交 build")
+    pack = body.pack
+    if body.project == "adas" and (not pack or pack == "dms_v2"):
+        pack = "adas_moon3d_v1"
+    params: dict[str, Any] = {
+        "project": body.project,
+        "task": body.task,
+        "pack": pack,
+    }
+    if body.location == "inbox":
+        params["batch"] = body.batch
+    else:
+        params["all_sources"] = True
+    try:
+        return submit_approval(
+            action,
+            params,
+            submitted_by=user.name,
+            submitted_by_user_id=user.id,
+            note=body.note or f"入库 {body.batch}",
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
 @router.get("/audit/{record_id}")
 def api_system_get_approval(
     record_id: str,

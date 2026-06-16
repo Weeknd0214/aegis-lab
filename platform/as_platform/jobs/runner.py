@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from as_platform.config import WORKSPACE, PLATFORM_DIR, LANE_DATA_VIZ_ENABLED
@@ -73,23 +74,51 @@ def execute_action(action: str, params: dict[str, Any]) -> dict[str, Any]:
         return _run_ml(["train", "lane"], timeout=86400)
 
     if action == "build_dms":
-        argv = ["build", "dms", p["task"]]
-        if p.get("pack"):
-            argv.extend(["--pack", str(p["pack"])])
-        if p.get("batch"):
-            argv.extend(["--batch", str(p["batch"])])
-        if p.get("all_sources"):
-            argv.append("--all-sources")
-        if p.get("dry_run"):
-            argv.append("--dry-run")
-        if p.get("skip_validate"):
-            argv.append("--skip-validate")
-        if p.get("no_refresh"):
-            argv.append("--no-refresh")
-        result = _run_ml(argv)
-        # 自动创建数据集快照
-        _auto_snapshot("dms", task=p.get("task", ""))
+        from as_platform.data.promote.runner import promote_batch
+
+        result = promote_batch(
+            "dms",
+            task=p["task"],
+            batch=p.get("batch"),
+            pack=p.get("pack"),
+            dry_run=bool(p.get("dry_run")),
+            skip_validate=bool(p.get("skip_validate")),
+            refresh=not p.get("no_refresh"),
+        )
         return result
+
+    if action == "build_adas":
+        from as_platform.data.promote.runner import promote_batch
+
+        return promote_batch(
+            "adas",
+            task=p.get("task", "cuboid_7cls"),
+            batch=p.get("batch"),
+            pack=p.get("pack", "adas_moon3d_v1"),
+            dry_run=bool(p.get("dry_run")),
+            skip_validate=bool(p.get("skip_validate")),
+            allow_partial_3d=bool(p.get("allow_partial_3d", True)),
+        )
+
+    if action == "cuboid_fit_3d":
+        from as_platform.db.engine import session_scope
+        from as_platform.db.models import LabelingCampaign
+        from as_platform.labeling.annotate import resolve_campaign_batch_dir
+        from as_platform.labeling.fit_cuboid_batch import fit_batch
+
+        campaign_id = p.get("campaign_id", "")
+        batch_dir = None
+        if campaign_id:
+            with session_scope() as db:
+                camp = db.get(LabelingCampaign, campaign_id)
+                if camp:
+                    batch_dir = resolve_campaign_batch_dir(camp)
+        if batch_dir is None and p.get("batch_dir"):
+            batch_dir = Path(p["batch_dir"])
+        if batch_dir is None:
+            raise ValueError("cuboid_fit_3d 需要 campaign_id 或 batch_dir")
+        conv = fit_batch(batch_dir)
+        return {"ok": True, "stdout": json.dumps(conv, ensure_ascii=False), "stderr": "", "fit_convert": conv}
 
     if action == "build_lane":
         result = _run_ml(["build", "lane"])
@@ -229,10 +258,7 @@ def execute_action(action: str, params: dict[str, Any]) -> dict[str, Any]:
                     "export_ls_to_yolo: 无有效标注可导出 (written=0); "
                     f"skipped_empty={conv.get('skipped_empty')} missing_ann={conv.get('missing_ann')}"
                 )
-            argv = ["build", "dms", task, "--pack", pack, "--batch", batch]
-            result = _run_ml(argv)
-            result["export_convert"] = conv
-            return result
+            return {"ok": True, "stdout": json.dumps(conv, ensure_ascii=False), "stderr": "", "export_convert": conv}
         if row.get("project") == "lane" and export == "lane_gt_txt":
             scripts_dir = WORKSPACE / "datasets" / "lane" / "scripts"
             if str(scripts_dir) not in sys.path:
@@ -250,10 +276,22 @@ def execute_action(action: str, params: dict[str, Any]) -> dict[str, Any]:
                     "export_ls_to_lane_gt: 无有效标注可导出 (written=0); "
                     f"skipped_empty={conv.get('skipped_empty')} missing_ann={conv.get('missing_ann')}"
                 )
-            argv = ["build", "lane"]
-            result = _run_ml(argv)
-            result["export_convert"] = conv
-            return result
+            return {"ok": True, "stdout": json.dumps(conv, ensure_ascii=False), "stderr": "", "export_convert": conv}
+        if row.get("project") == "adas" and export == "cvat_cuboid":
+            from as_platform.labeling.export_cuboid_batch import export_batch as export_cuboid_batch
+
+            with session_scope() as db:
+                camp = db.get(LabelingCampaign, campaign_id)
+                if not camp:
+                    raise ValueError("campaign not found")
+                batch_dir = resolve_campaign_batch_dir(camp)
+            conv = export_cuboid_batch(batch_dir)
+            if conv.get("written", 0) == 0:
+                raise ValueError(
+                    "export_cuboid_batch: 无有效 cuboid 可导出 (written=0); "
+                    f"skipped_empty={conv.get('skipped_empty')} missing_ann={conv.get('missing_ann')}"
+                )
+            return {"ok": True, "stdout": json.dumps(conv, ensure_ascii=False), "stderr": "", "export_convert": conv}
         return {
             "ok": True,
             "stdout": json.dumps({"export": export, "campaign": row}, ensure_ascii=False),

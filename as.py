@@ -272,18 +272,14 @@ def cmd_build_dms(
     all_sources: bool,
     skip_validate: bool,
 ) -> None:
-    root = proj_root(wf, "dms")
-    scripts = root / "scripts"
-
     if not task:
         cmd_refresh_dms(wf, None)
         print("已按 active_packs 生成 manifests/yaml_active/*.yaml（未合并任何新文件）")
         return
 
-    ensure_dms_pack(root, pack)
-    scripts = root / "scripts"
-
     if all_sources:
+        root = proj_root(wf, "dms")
+        scripts = root / "scripts"
         cmd = [
             sys.executable,
             str(scripts / "ingest_incremental.py"),
@@ -291,40 +287,57 @@ def cmd_build_dms(
             "--pack", pack,
             "--all-sources",
         ]
-    elif batch:
-        src = root / "inbox" / task / batch
-        if not src.is_dir():
-            sys.exit(f"inbox 批次不存在: {src}")
-        cmd = [
-            sys.executable,
-            str(scripts / "ingest_incremental.py"),
-            "--task", task,
-            "--pack", pack,
-            "--src", str(src),
-        ]
-    else:
-        cmd = [
-            sys.executable,
-            str(scripts / "ingest_incremental.py"),
-            "--task", task,
-            "--pack", pack,
-            "--all-inbox",
-        ]
-    if dry_run:
-        cmd.append("--dry-run")
-    subprocess.check_call(cmd, cwd=root)
-
-    if dry_run:
+        if dry_run:
+            cmd.append("--dry-run")
+        subprocess.check_call(cmd, cwd=root)
+        if not dry_run and not skip_validate:
+            run_validate_dms(task)
+        if refresh and not dry_run:
+            cmd_refresh_dms(wf, task)
         return
 
-    if not skip_validate:
-        print("validate …")
-        run_validate_dms(task)
+    from as_platform.data.promote.runner import promote_batch
 
-    if refresh:
+    result = promote_batch(
+        "dms",
+        task=task,
+        batch=batch,
+        pack=pack,
+        dry_run=dry_run,
+        skip_validate=skip_validate,
+        refresh=refresh,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if not dry_run and not skip_validate:
+        run_validate_dms(task)
+    if refresh and not dry_run:
         cmd_refresh_dms(wf, task)
-    else:
+    elif not dry_run:
         print("提示: python as.py build dms --refresh  # 生成训练 yaml")
+
+
+def cmd_build_adas(
+    wf: dict,
+    task: str,
+    batch: str | None,
+    pack: str,
+    dry_run: bool,
+    skip_validate: bool,
+) -> None:
+    if not batch:
+        sys.exit("adas build 需要 --batch")
+    from as_platform.data.promote.runner import promote_batch
+
+    result = promote_batch(
+        "adas",
+        task=task,
+        batch=batch,
+        pack=pack,
+        dry_run=dry_run,
+        skip_validate=skip_validate,
+        allow_partial_3d=True,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_eval_dms(wf: dict, task: str, weights: Path | None, save_candidate: bool) -> None:
@@ -550,7 +563,7 @@ def main() -> None:
     ad.add_argument("--copy", action="store_true")
 
     bd = sub.add_parser("build")
-    bd.add_argument("project", choices=("dms", "lane"))
+    bd.add_argument("project", choices=("dms", "lane", "adas"))
     bd.add_argument("task", nargs="?")
     bd.add_argument("--pack", default="dms_v1", help="dms 写入/合并的目标包")
     bd.add_argument("--batch")
@@ -632,6 +645,15 @@ def main() -> None:
                 args.dry_run,
                 not args.no_refresh,
                 args.all_sources,
+                getattr(args, "skip_validate", False),
+            )
+        elif args.project == "adas":
+            cmd_build_adas(
+                wf,
+                args.task or "cuboid_7cls",
+                args.batch,
+                args.pack or "adas_moon3d_v1",
+                args.dry_run,
                 getattr(args, "skip_validate", False),
             )
         else:

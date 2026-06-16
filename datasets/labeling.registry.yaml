@@ -38,8 +38,8 @@ profiles:
     export_default: cvat_cuboid
     ml_adapter: adas_yolo26
     cvat_labels:
-      - car
       - pedestrian
+      - car
       - truck
       - bus
       - motorcycle

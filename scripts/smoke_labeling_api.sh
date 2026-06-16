@@ -10,6 +10,12 @@ python3 "$ROOT/datasets/dms/scripts/test_export_ls_to_yolo.py"
 echo "==> offline export_ls_to_lane_gt unit tests"
 python3 "$ROOT/datasets/lane/scripts/test_export_ls_to_lane_gt.py"
 
+echo "==> offline unified ingest SDK unit tests"
+PYTHONPATH="$ROOT/platform:$ROOT" python3 "$ROOT/platform/as_platform/tests/test_unified_ingest_sdk.py"
+
+echo "==> offline ADAS promote smoke (export/fit/promote)"
+bash "$ROOT/scripts/smoke_adas_promote.sh"
+
 if [[ "${HSAP_API_SKIP:-0}" == "1" ]]; then
   echo "SKIP API tests (HSAP_API_SKIP=1)"
   echo "OK (offline only)"

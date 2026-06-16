@@ -198,6 +198,12 @@ export const WorkbenchPage: React.FC = () => {
                       ✏️ 进入标注
                     </Link>
                   )}
+                  {b.stage === "returned" && (
+                    <Link to="/labeling/export"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
+                      🏗 提交 build
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>

@@ -557,5 +557,40 @@ def main() -> None:
             print("提示: 可运行 python scripts/refresh_yaml.py")
 
 
+def promote_inbox_batch(
+    *,
+    root: Path,
+    task: str,
+    pack: str,
+    src: Path,
+    mode: str | None = None,
+    dry_run: bool = False,
+    refresh: bool = True,
+    copy: bool = False,
+) -> dict:
+    """Programmatic inbox batch promote (used by Pack Promote SDK)."""
+    reg = load_registry(root.resolve())
+    split_cfg = reg.get("split") or {}
+    ns = argparse.Namespace(
+        task=task,
+        submode=mode,
+        mode=mode,
+        pack=pack,
+        dry_run=dry_run,
+        copy=copy,
+        to="train",
+        val_ratio=float(split_cfg.get("val_ratio", 0.1)),
+        seed=int(split_cfg.get("seed", 42)),
+        resplit=bool(split_cfg.get("resplit_after_ingest", True)),
+        dedup="stem",
+    )
+    result = ingest_one(root.resolve(), reg, task, src.resolve(), ns)
+    if not dry_run:
+        append_log(root.resolve(), {"src": str(src), "pack": pack, **result})
+        if refresh:
+            run_refresh(root.resolve())
+    return result
+
+
 if __name__ == "__main__":
     main()

@@ -54,4 +54,10 @@ projects:
     root: datasets/adas
     # 数据湖：宿主机 DATA/data/送标/adas → inbox/{task}/{batch}/images/
     registry: adas.registry.yaml
-    active_packs: []
+    packs_registry: data_packs.yaml
+    base_pack: adas_moon3d_v1
+    active_packs:
+      - adas_moon3d_v1
+    merge:
+      train: lists/train_stems.txt
+      val: lists/val_stems.txt

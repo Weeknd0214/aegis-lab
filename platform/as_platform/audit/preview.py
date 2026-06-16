@@ -264,6 +264,35 @@ def resolve_approval_scope(action: str, params: dict[str, Any]) -> dict[str, Any
             "batches": batches,
         }
 
+    if action == "build_adas":
+        task = p.get("task") or "cuboid_7cls"
+        batch_name = p.get("batch")
+        root = proj_root(wf, "adas")
+        batches: list[dict[str, Any]] = []
+        if batch_name:
+            batches.append({"path": root / "inbox" / task / batch_name, "batch": batch_name, "location": "inbox"})
+        pack = p.get("pack") or "adas_moon3d_v1"
+        stats: dict[str, Any] = {}
+        if batch_name:
+            from as_platform.data.promote.validate.adas_cuboid import validate_adas_cuboid_batch
+
+            bpath = root / "inbox" / task / batch_name
+            if bpath.is_dir():
+                _err, _warn, stats = validate_adas_cuboid_batch(bpath, allow_partial_3d=True)
+        from as_platform.labeling.class_map import load_adas_class_names
+
+        names = load_adas_class_names()
+        class_names = {i: n for i, n in enumerate(names)}
+        return {
+            "project": "adas",
+            "task": task,
+            "pack": pack,
+            "scope_label": f"ADAS · {task} · {pack}" + (f" · {batch_name}" if batch_name else ""),
+            "class_names": class_names,
+            "batches": batches,
+            "export_stats": stats,
+        }
+
     if action == "delivery_ingest":
         data_path = (p.get("data_path") or "").strip()
         if not data_path:

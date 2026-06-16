@@ -162,6 +162,12 @@ export const hsapApi = {
   labelingExport: (campaignId: string) =>
     postJson<{ ok: boolean; job?: { id: string } }>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/export`),
 
+  labelingExportStats: (campaignId: string) =>
+    fetchJson<Record<string, unknown>>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/export-stats`),
+
+  cuboidFit: (campaignId: string) =>
+    postJson<Record<string, unknown>>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/cuboid-fit`),
+
   submitLabelingCampaign: (campaignId: string) =>
     postJson<Record<string, unknown>>(`${API_BASE}/api/v1/labeling/campaigns/${campaignId}/submit`),
 

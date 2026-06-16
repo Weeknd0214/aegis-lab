@@ -10,8 +10,12 @@
 |------|------|-----------------|
 | `raw_pool` | 待标注原图 | 有 `images/`，无 `labels/` |
 | `out_for_labeling` | 送标中 | 已 open Campaign |
-| `returned` | 回传待入库 | 有 `images/` + `labels/`（YOLO txt） |
-| `ingested` | 已入库 | 已进入 pack/sources 或 Lane gt |
+| `returned` | 回传待 build | 有导出产物（DMS: YOLO txt；ADAS: quaternion_json） |
+| `ingested` | 已入库 | 已进入 pack/sources（`promote_batch`） |
+
+**协调员 QA 门禁路径（推荐）：** 标完 → **提交质检** (`in_review`) → 质检通过 (`labeling_submitted`) → **执行导出** → `returned` → **提交 build**（审核）→ `ingested`。
+
+ADAS cuboid 详见 [ADAS_MOON3D_PACK.md](./ADAS_MOON3D_PACK.md)：导出 → 可选 `cuboid_fit_3d` → `build_adas` 进 `adas_moon3d_v1`。
 
 **登记 meta**（`更多操作` 内）只写入 `batch.meta.yaml`，**不等于**已送标。
 

@@ -11,7 +11,7 @@ from as_platform.config import LANE_DATA_VIZ_ENABLED
 from as_platform.integrations.feishu_notify import send_chat_async
 
 ACTIONS_REQUIRING_APPROVAL = {
-    "build_dms", "build_lane", "enable_pack", "disable_pack",
+    "build_dms", "build_adas", "build_lane", "enable_pack", "disable_pack",
     "train_dms", "train_lane", "eval_dms", "promote_dms",
     "pipeline_dms", "register_batch", "eval_lane", "visualize_dms", "visualize_lane",
     "delivery_ingest",
@@ -31,6 +31,7 @@ REJECTION_CATEGORY_LABEL = {k: v for k, v in REJECTION_CATEGORIES.items()}
 
 ACTION_LABELS = {
     "build_dms": "DMS 入库 (build)",
+    "build_adas": "ADAS 入库 (build)",
     "build_lane": "车道线合并列表 (build lane)",
     "enable_pack": "启用训练数据包",
     "disable_pack": "停用训练数据包",

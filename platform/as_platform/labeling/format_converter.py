@@ -492,6 +492,71 @@ def convert_cvat_kitti_export_to_hsap(kitti_data: bytes, output_dir: Path) -> in
 
 
 # ═══════════════════════════════════════════════════════
+# CVAT cuboid 16pt → HSAP quaternion_json detection (MVP)
+# ═══════════════════════════════════════════════════════
+
+CUBOID_7CLS_NAMES = [
+    "pedestrian",
+    "car",
+    "truck",
+    "bus",
+    "motorcycle",
+    "tricycle",
+    "traffic cone",
+]
+
+
+def cuboid_points_to_box2d(points: list[float]) -> list[float] | None:
+    """从 CVAT cuboid 16 点（8 个 x,y 对）计算 axis-aligned 2D bbox。"""
+    if len(points) < 16:
+        return None
+    xs = [float(points[i]) for i in range(0, 16, 2)]
+    ys = [float(points[i]) for i in range(1, 16, 2)]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def cuboid_item_to_detection(
+    item: dict[str, Any],
+    class_map: dict[str, int],
+    *,
+    K: list[list[float]] | None = None,
+) -> dict[str, Any] | None:
+    """ls_annotations cuboid 条目 → quaternion_json detection（MVP：2D bbox + 可选 3D 占位）。"""
+    label = str(item.get("label") or "")
+    class_id = class_map.get(label)
+    if class_id is None:
+        for name, cid in class_map.items():
+            if name.lower() == label.lower():
+                class_id = cid
+                break
+    if class_id is None:
+        return None
+
+    points = item.get("points") or []
+    if len(points) < 16:
+        for key in (
+            "xtl1", "ytl1", "xtr1", "ytr1", "xbl1", "ybl1", "xbr1", "ybr1",
+            "xtl2", "ytl2", "xtr2", "ytr2", "xbl2", "ybl2", "xbr2", "ybr2",
+        ):
+            if key in item:
+                points.append(float(item[key]))
+    box2d = cuboid_points_to_box2d(points)
+    if not box2d:
+        return None
+
+    det: dict[str, Any] = {
+        "class_id": class_id,
+        "class_name": label,
+        "score": 1.0,
+        "box2d_xyxy": box2d,
+        "fit_ok": False,
+    }
+    if K:
+        det["K_used"] = True
+    return det
+
+
+# ═══════════════════════════════════════════════════════
 # ADAS 3D Quaternion JSON → CVAT cuboid XML
 # ═══════════════════════════════════════════════════════
 

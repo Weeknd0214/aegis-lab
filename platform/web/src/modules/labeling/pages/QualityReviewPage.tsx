@@ -33,7 +33,7 @@ const ReviewListPage: React.FC = () => {
       const results: LabelingBatchRow[] = [];
       const [inReview, approved, rejected] = await Promise.allSettled([
         hsapApi.labelingBatches({ stage: "in_review", limit: 100 }),
-        hsapApi.labelingBatches({ stage: "review_approved", limit: 50 }),
+        hsapApi.labelingBatches({ stage: "labeling_submitted", limit: 50 }),
         hsapApi.labelingBatches({ stage: "review_rejected", limit: 50 }),
       ]);
       if (inReview.status === "fulfilled") results.push(...((inReview.value.items || []) as LabelingBatchRow[]));
@@ -80,7 +80,7 @@ const ReviewListPage: React.FC = () => {
           {/* Filter chips */}
           <div className="flex gap-1.5">
             {["全部", "质检中", "已通过", "已退回"].map((label, i) => {
-              const val = i === 0 ? "" : ["in_review", "review_approved", "review_rejected"][i - 1];
+              const val = i === 0 ? "" : ["in_review", "labeling_submitted", "review_rejected"][i - 1];
               return (
                 <button key={val} onClick={() => setStageFilter(val)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -120,7 +120,9 @@ const ReviewListPage: React.FC = () => {
                   </div>
                   <div className="shrink-0">
                     {b.stage === "in_review" && <Link to={`/labeling/review/${b.campaign_id}`}><Button size="small" variant="primary">▶ 开始质检</Button></Link>}
-                    {b.stage === "review_approved" && <span className="text-green-600 text-sm font-medium">✓ 已通过</span>}
+                    {b.stage === "labeling_submitted" && (
+                      <Link to="/labeling/export"><Button size="small" variant="default">去导出 →</Button></Link>
+                    )}
                     {b.stage === "review_rejected" && <span className="text-red-600 text-sm font-medium">✗ 已退回</span>}
                   </div>
                 </div>

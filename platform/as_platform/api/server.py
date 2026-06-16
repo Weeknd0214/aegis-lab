@@ -498,15 +498,23 @@ def api_submit(body: SubmitApprovalBody, user: Annotated[User, Depends(get_curre
 
 @app.post("/api/v1/approvals/submit-build-batch")
 def api_submit_build_batch(body: BuildFromBatchBody, user: Annotated[User, Depends(get_current_user)]) -> dict[str, Any]:
-    if not can_submit_action(user, "build_dms"):
+    action = "build_adas" if body.project == "adas" else "build_dms"
+    if not can_submit_action(user, action) and not can_submit_action(user, "build_dms"):
         raise HTTPException(403, "无权提交 build")
-    params: dict[str, Any] = {"task": body.task, "pack": body.pack}
+    pack = body.pack
+    if body.project == "adas" and (not pack or pack == "dms_v2"):
+        pack = "adas_moon3d_v1"
+    params: dict[str, Any] = {
+        "project": body.project,
+        "task": body.task,
+        "pack": pack,
+    }
     if body.location == "inbox":
         params["batch"] = body.batch
     else:
         params["all_sources"] = True
     return submit_approval(
-        "build_dms", params,
+        action, params,
         submitted_by=user.name,
         submitted_by_user_id=user.id,
         note=body.note or f"入库 {body.batch}",

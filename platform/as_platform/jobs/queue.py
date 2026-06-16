@@ -140,6 +140,10 @@ def _run_job(job_id: str) -> None:
                 from as_platform.labeling.batch_stage import on_labeling_export_job_succeeded
 
                 on_labeling_export_job_succeeded(job)
+            elif job.get("action") in ("build_dms", "build_adas", "build_lane"):
+                from as_platform.labeling.batch_stage import on_build_job_succeeded
+
+                on_build_job_succeeded(job)
         except Exception as e:
             _patch(job_id, status="failed", finished_at=_now(), result={"ok": False, "error": str(e)})
             publish("job.failed", {"job_id": job_id, "error": str(e)})

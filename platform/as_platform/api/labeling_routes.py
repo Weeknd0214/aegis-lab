@@ -37,6 +37,8 @@ from as_platform.labeling.service import (
     open_campaign,
     submit_campaign,
     trigger_labeling_export,
+    get_batch_export_stats,
+    trigger_cuboid_fit,
 )
 from as_platform.labeling.vendor_import import import_vendor_zip, list_registry_profiles
 
@@ -313,6 +315,30 @@ def api_labeling_export(
         return trigger_labeling_export(campaign_id)
     except FileNotFoundError:
         raise HTTPException(404, "campaign not found") from None
+
+
+@router.get("/api/v1/labeling/campaigns/{campaign_id}/export-stats")
+def api_batch_export_stats(
+    campaign_id: str,
+    _user: Annotated[User, Depends(require_permission("read:pending"))],
+) -> dict[str, Any]:
+    try:
+        return get_batch_export_stats(campaign_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "campaign not found") from None
+
+
+@router.post("/api/v1/labeling/campaigns/{campaign_id}/cuboid-fit")
+def api_cuboid_fit(
+    campaign_id: str,
+    _user: Annotated[User, Depends(require_permission("read:pending"))],
+) -> dict[str, Any]:
+    try:
+        return trigger_cuboid_fit(campaign_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "campaign not found") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @router.get("/api/v1/labeling/campaigns/{campaign_id}/export-jobs")

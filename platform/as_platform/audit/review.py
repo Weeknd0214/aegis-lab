@@ -272,9 +272,10 @@ def _update_campaign_stage(db, campaign_id: str, new_stage: str) -> None:
     from as_platform.labeling.batch_stage import update_campaign_batch_meta_stage
     camp = db.get(LabelingCampaign, campaign_id)
     if camp:
-        camp.status = new_stage
+        effective = "labeling_submitted" if new_stage == "review_approved" else new_stage
+        camp.status = effective
         db.flush()
-        update_campaign_batch_meta_stage(camp, new_stage)
+        update_campaign_batch_meta_stage(camp, effective)
 
 
 def review_progress(campaign_id: str) -> dict[str, int]:

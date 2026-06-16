@@ -339,7 +339,13 @@ export const CampaignsPage: React.FC = () => {
                         </Link>
                         <button
                           onClick={() => handleExport(b.campaign_id!)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+                          disabled={!["labeling_submitted", "returned"].includes(b.stage || "")}
+                          title={!["labeling_submitted", "returned"].includes(b.stage || "") ? "质检通过后才可导出" : undefined}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                            ["labeling_submitted", "returned"].includes(b.stage || "")
+                              ? "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                              : "bg-gray-50 text-gray-300 cursor-not-allowed"
+                          }`}
                         >
                           📤 导出
                         </button>
@@ -347,7 +353,7 @@ export const CampaignsPage: React.FC = () => {
                           onClick={() => handleSubmit(b.campaign_id!)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
                         >
-                          ✅ 提交
+                          ✅ 提交质检
                         </button>
                         <button
                           onClick={() => toggleExpand(b.campaign_id!)}

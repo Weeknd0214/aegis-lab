@@ -18,6 +18,7 @@ from as_platform.labeling.batch_stage import (
     on_labeling_export_job_succeeded,
     update_campaign_batch_meta_stage,
 )
+from as_platform.labeling.stage import effective_stage, matches_stage_filter
 from as_platform.labeling.scope import (
     enrich_batch_labels,
     format_scope_key,
@@ -120,11 +121,14 @@ def list_labeling_batches(
     def _append(b: dict[str, Any]) -> None:
         if b.get("registry_only"):
             return
-        if stage and b.get("stage") != stage:
+        raw_stage = b.get("stage")
+        eff = effective_stage(raw_stage)
+        if stage and not matches_stage_filter(raw_stage, stage):
             return
-        if b.get("stage") not in allowed_stages:
+        if eff not in allowed_stages and raw_stage not in allowed_stages:
             return
         row = enrich_batch_labels(b, reg)
+        row["stage"] = eff or raw_stage
         cid = _campaign_id(
             row["project"], row.get("task") or "", row.get("mode"), row["batch"], row.get("location") or "inbox"
         )
@@ -468,6 +472,48 @@ def trigger_labeling_export(campaign_id: str) -> dict[str, Any]:
     )
     ej = _record_export_job(campaign_id, "labeling_export", job)
     return {"ok": True, "job": job, "export_job": ej, "export_default": row.get("export_default")}
+
+
+def get_batch_export_stats(campaign_id: str) -> dict[str, Any]:
+    from as_platform.labeling.annotate import resolve_campaign_batch_dir
+    from as_platform.data.promote.validate.adas_cuboid import validate_adas_cuboid_batch
+    from as_platform.labeling.batch_stage import batch_has_cuboid_labels, batch_has_yolo_labels
+
+    with session_scope() as db:
+        camp = db.get(LabelingCampaign, campaign_id)
+        if not camp:
+            raise FileNotFoundError("campaign not found")
+        project = camp.project
+        batch_dir = resolve_campaign_batch_dir(camp)
+    if project == "adas":
+        _errors, warnings, stats = validate_adas_cuboid_batch(batch_dir, allow_partial_3d=True)
+        calib = (batch_dir / "calib").is_dir() and bool(list((batch_dir / "calib").glob("*.yaml")))
+        return {
+            "project": "adas",
+            "campaign_id": campaign_id,
+            "pack_default": "adas_moon3d_v1",
+            "quaternion_files": stats.get("quaternion_files", 0),
+            "fit_ok_ratio": stats.get("fit_ok_ratio", 0),
+            "missing_calib": not calib,
+            "stats": stats,
+            "warnings": warnings,
+        }
+    return {
+        "project": project,
+        "campaign_id": campaign_id,
+        "has_yolo": batch_has_yolo_labels(batch_dir),
+        "has_cuboid": batch_has_cuboid_labels(batch_dir),
+    }
+
+
+def trigger_cuboid_fit(campaign_id: str) -> dict[str, Any]:
+    row = get_campaign(campaign_id)
+    if not row:
+        raise FileNotFoundError("campaign not found")
+    if row.get("project") != "adas":
+        raise ValueError("cuboid_fit_3d 仅适用于 ADAS")
+    job = enqueue_job("cuboid_fit_3d", {"campaign_id": campaign_id}, async_run=True)
+    return {"ok": True, "job": job}
 
 
 # ═══════════════════════════════════════════════════════
