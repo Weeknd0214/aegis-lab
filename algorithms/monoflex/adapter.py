@@ -21,7 +21,7 @@ def _ensure_code() -> None:
     if not (MONOFLEX_ROOT / "tools/plain_train_net.py").is_file():
         raise FileNotFoundError(
             f"MonoFlex 代码缺失: {MONOFLEX_ROOT}\n"
-            "请执行 bash scripts/vendor_monoflex.sh 或从 workspace/BK2/archive/MonoFlex 同步"
+            "请 git clone aegis-lab 或确认 algorithms/monoflex/code 存在"
         )
 
 

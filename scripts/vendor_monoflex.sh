@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 将 workspace/BK2/archive/MonoFlex 同步到 algorithms/monoflex/code（不含权重与 output）
+# 从外部 MonoFlex 源同步到 algorithms/monoflex/code（可选；默认源码已在仓内）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DATA="$(cd "$ROOT/.." && pwd)"
-SRC="${MONOFLEX_SRC:-$DATA/workspace/BK2/archive/MonoFlex}"
+SRC="${MONOFLEX_SRC:-}"
 DEST="$ROOT/algorithms/monoflex/code"
 
-if [[ ! -d "$SRC/tools" ]]; then
-  echo "错误: MonoFlex 源不存在: $SRC"
-  exit 1
+if [[ -z "$SRC" || ! -d "$SRC/tools" ]]; then
+  echo "MonoFlex 源码已在仓库内: $DEST"
+  echo "若要从其他路径覆盖，请设置: MONOFLEX_SRC=/path/to/MonoFlex bash $0"
+  exit 0
 fi
 
 mkdir -p "$DEST"

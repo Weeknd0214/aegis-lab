@@ -36,8 +36,8 @@ CUDA_VISIBLE_DEVICES=0 python tools/plain_train_net.py \
 
 ## 同步源码
 
-从 workspace 更新：
+源码已内嵌在 `algorithms/monoflex/code/`。若从其他 MonoFlex 副本更新：
 
 ```bash
-bash scripts/vendor_monoflex.sh
+MONOFLEX_SRC=/path/to/MonoFlex bash scripts/vendor_monoflex.sh
 ```
